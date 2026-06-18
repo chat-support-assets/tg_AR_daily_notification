@@ -1,13 +1,14 @@
+#!/usr/bin/env python
 import asyncio
 import signal
 import sys
 import argparse
-from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from bot_core import RefillBot, run_daily_reports, shutdown_bots
+from bot_core import RefillBot
 from logger_setup import logger
 from config import BOT_INR_TOKEN, BOT_OTHER_TOKEN
+from datetime import datetime
 
 
 class BotManager:
@@ -34,31 +35,39 @@ class BotManager:
                 self.bot_inr = RefillBot(BOT_INR_TOKEN, 'INR')
                 await self.bot_inr.initialize()
                 logger.info("✅ Бот INR запущен")
-            except Exception:
-                logger.warning("⚠️ Бот INR уже запущен в другом месте. Пропускаем...")
-                self.bot_inr = None
+            except Exception as e:
+                if "Conflict" in str(e):
+                    logger.warning("⚠️ Бот INR уже запущен в другом месте. Пропускаем...")
+                    self.bot_inr = None
+                else:
+                    logger.error(f"❌ Ошибка запуска бота INR: {e}")
+                    self.bot_inr = None
             
             try:
                 self.bot_other = RefillBot(BOT_OTHER_TOKEN, 'OTHER')
                 await self.bot_other.initialize()
                 logger.info("✅ Бот OTHER запущен")
-            except Exception:
-                logger.warning("⚠️ Бот OTHER уже запущен в другом месте. Пропускаем...")
-                self.bot_other = None
+            except Exception as e:
+                if "Conflict" in str(e):
+                    logger.warning("⚠️ Бот OTHER уже запущен в другом месте. Пропускаем...")
+                    self.bot_other = None
+                else:
+                    logger.error(f"❌ Ошибка запуска бота OTHER: {e}")
+                    self.bot_other = None
             
             # Проверяем, что хотя бы один бот запущен
             if not self.bot_inr and not self.bot_other:
                 logger.error("❌ Ни один бот не может быть запущен!")
                 return
             
+            # Запускаем отчеты в ручном режиме
             if self.manual_mode:
                 logger.info("📊 Ручной режим: запуск отчетов...")
                 
-                # Запускаем отчеты только для активных ботов
                 tasks = []
-                if self.bot_inr:
+                if self.bot_inr and self.bot_inr.is_ready:
                     tasks.append(self.bot_inr.run_daily_report())
-                if self.bot_other:
+                if self.bot_other and self.bot_other.is_ready:
                     tasks.append(self.bot_other.run_daily_report())
                 
                 if tasks:
@@ -69,9 +78,9 @@ class BotManager:
                 
                 logger.info("Нажмите Ctrl+C для остановки")
             else:
+                # Автоматический режим с планировщиком
                 self.scheduler = AsyncIOScheduler()
                 
-                # Запуск отчетов каждый день в 10:00
                 self.scheduler.add_job(
                     self._run_reports,
                     CronTrigger(hour=10, minute=0),
@@ -149,16 +158,16 @@ async def main():
             await bot_inr.initialize()
             await bot_inr.run_daily_report()
             await bot_inr.shutdown()
-        except Exception:
-            logger.warning("⚠️ Бот INR уже запущен. Пропускаем...")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при тесте INR: {e}")
         
         try:
             bot_other = RefillBot(BOT_OTHER_TOKEN, 'OTHER')
             await bot_other.initialize()
             await bot_other.run_daily_report()
             await bot_other.shutdown()
-        except Exception:
-            logger.warning("⚠️ Бот OTHER уже запущен. Пропускаем...")
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при тесте OTHER: {e}")
         
         logger.info("✅ Тестовый режим завершен")
         return

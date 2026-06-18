@@ -1,3 +1,5 @@
+# agent_manager.py - с улучшенным поиском
+
 import json
 import os
 from typing import Dict, Optional
@@ -13,12 +15,9 @@ class AgentManager:
         self.agents_data = self._load_cache()
     
     def _load_cache(self) -> Dict:
-        """
-        Загружает данные из кэш-файла
-        """
+        """Загружает данные из кэш-файла"""
         if os.path.exists(self.cache_file):
             try:
-                # Проверяем, не пустой ли файл
                 if os.path.getsize(self.cache_file) == 0:
                     logger.warning(f"⚠️ Файл {self.cache_file} пустой. Создаем новый.")
                     return {}
@@ -34,7 +33,6 @@ class AgentManager:
                     
             except json.JSONDecodeError as e:
                 logger.error(f"❌ Ошибка парсинга JSON в {self.cache_file}: {e}")
-                # Создаем резервную копию поврежденного файла
                 backup_file = f"{self.cache_file}.backup"
                 try:
                     os.rename(self.cache_file, backup_file)
@@ -61,7 +59,16 @@ class AgentManager:
     
     def get_agent(self, group_name: str) -> Optional[Dict]:
         """Получает данные агента по имени группы"""
-        return self.agents_data.get(group_name)
+        # Точное совпадение
+        if group_name in self.agents_data:
+            return self.agents_data[group_name]
+        
+        # Поиск без учета регистра
+        for name, data in self.agents_data.items():
+            if name.lower() == group_name.lower():
+                return data
+        
+        return None
     
     def update_agent(self, group_name: str, chat_id: int, topic_id: Optional[int] = None):
         """Обновляет или создает данные агента"""
@@ -80,7 +87,7 @@ class AgentManager:
         self.save_cache()
         logger.info(f"✅ Обновлены данные агента {group_name}: chat_id={chat_id}, topic_id={topic_id}")
     
-    def update_topic_id(self, group_name: str, topic_id: int):
+    def update_topic_id(self, group_name: str, topic_id: Optional[int]):
         """Обновляет только ID топика"""
         if group_name in self.agents_data:
             self.agents_data[group_name]['topic_id'] = topic_id
@@ -104,11 +111,6 @@ class AgentManager:
         """Возвращает всех агентов"""
         return self.agents_data
     
-    def add_agent_manually(self, group_name: str, chat_id: int, topic_id: Optional[int] = None):
-        """Добавляет агента вручную (для настройки)"""
-        self.update_agent(group_name, chat_id, topic_id)
-        logger.info(f"✅ Агент {group_name} добавлен вручную")
-    
     def remove_agent(self, group_name: str) -> bool:
         """Удаляет агента из кэша"""
         if group_name in self.agents_data:
@@ -116,11 +118,19 @@ class AgentManager:
             self.save_cache()
             logger.info(f"🗑️ Агент {group_name} удален из кэша")
             return True
+        
+        # Поиск без учета регистра
+        for name in list(self.agents_data.keys()):
+            if name.lower() == group_name.lower():
+                del self.agents_data[name]
+                self.save_cache()
+                logger.info(f"🗑️ Агент {name} удален из кэша")
+                return True
+        
         return False
     
     @staticmethod
     def _get_timestamp():
-        """Возвращает текущую временную метку"""
         from datetime import datetime
         return datetime.now().isoformat()
 

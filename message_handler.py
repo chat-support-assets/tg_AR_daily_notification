@@ -6,6 +6,8 @@ import random
 
 
 class AgentParser:
+    """Парсинг имени агента"""
+    
     @staticmethod
     def parse_agent_name(agent_name: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -17,11 +19,11 @@ class AgentParser:
         # Разбиваем по нижнему подчеркиванию
         parts = agent_name.split('_')
         
-        if len(parts) < 3:
+        if len(parts) < 2:
             logger.warning(f"⚠️ Неверный формат имени агента: {agent_name}")
             return None, None
         
-        # ГЕО - всегда последняя часть (3 буквы)
+        # ГЕО - всегда последняя часть (обычно 3 буквы)
         geo = parts[-1].upper()
         
         # Проверяем, что ГЕО состоит из 3 букв
@@ -30,9 +32,11 @@ class AgentParser:
             return None, None
         
         # Группа - все между первым и последним подчеркиванием
-        # Пропускаем первый элемент (Agent или CORP и т.д.)
-        group_parts = parts[1:-1]
-        group_name = '_'.join(group_parts) if group_parts else parts[1]
+        # Пропускаем первый элемент (Agent, CORP и т.д.)
+        if len(parts) > 2:
+            group_name = '_'.join(parts[1:-1])
+        else:
+            group_name = parts[1]
         
         return group_name, geo
 
@@ -41,7 +45,8 @@ class AgentParser:
         """
         Определяет диапазон скорости по проценту
         """
-        if percentage is None:
+        # Если процент None или меньше 0, возвращаем "Ниже 80"
+        if percentage is None or percentage < 0:
             return 'Ниже 80'
         
         for range_name, (min_val, max_val) in SPEED_RANGES.items():
@@ -60,21 +65,13 @@ class MessageBuilder:
     """Построение сообщений для отправки"""
     
     def __init__(self, messages_dict):
-        """
-        :param messages_dict: словарь с сообщениями из AR_text
-        """
         self.messages = messages_dict
-        # Счетчик для циклического перебора типов сообщений
         self.message_types = ['first', 'second', 'third', 'fourth', 'fifth']
-        self.type_index = 0
-        
-        # Кэш для хранения последнего использованного типа для каждого агента
         self.agent_last_type = {}
     
     def build_message(self, agent_name: str, share_0_5: float, share_120: float, refill_count: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Строит полное сообщение для агента
-        Возвращает (message, group_name, geo)
         """
         # Парсим имя
         group_name, geo = AgentParser.parse_agent_name(agent_name)
@@ -82,10 +79,15 @@ class MessageBuilder:
         if not group_name or not geo:
             return None, None, None
         
-        # Определяем диапазоны
+        # Проверяем наличие данных по 0-5 минут
+        if share_0_5 is None:
+            logger.warning(f"⚠️ Нет данных по скорости 0-5 для агента {agent_name}")
+            return None, None, None
+        
+        # Определяем диапазон для 0-5 минут
         range_0_5 = AgentParser.get_speed_range(share_0_5)
         
-        # Получаем текст для 0-5 минут (всегда отправляем)
+        # Получаем текст для 0-5 минут
         text_0_5 = self._get_message_for_agent(group_name, range_0_5)
         
         # Формируем сообщение
@@ -102,8 +104,8 @@ class MessageBuilder:
             "",
         ]
         
-        # Добавляем информацию о 120+ минутах, только если процент >= порога
-        if share_120 >= THRESHOLD_120_PLUS:
+        # Добавляем информацию о 120+ минутах, ТОЛЬКО если есть данные И процент >= порога
+        if share_120 is not None and share_120 >= THRESHOLD_120_PLUS:
             range_120 = AgentParser.get_speed_range(share_120)
             text_120 = self._get_message_for_agent(group_name, range_120, force_next=False)
             
@@ -113,11 +115,20 @@ class MessageBuilder:
                 text_120 if text_120 else f"Ваша скорость: {share_120}%",
                 "",
             ])
-        else:
+        # Если есть данные, но ниже порога
+        elif share_120 is not None:
             message_lines.extend([
                 "━━━━━━━━━━━━━━━━━━━━━",
                 f"⏱️ **Скорость после 120 минут: {share_120}%**",
-                "ℹ️ Показатель ниже порогового значения (2.5%)",
+                f"ℹ️ Показатель ниже порогового значения ({THRESHOLD_120_PLUS}%)",
+                "",
+            ])
+        # Если нет данных (пусто)
+        else:
+            message_lines.extend([
+                "━━━━━━━━━━━━━━━━━━━━━",
+                f"⏱️ **Скорость после 120 минут:** Нет данных",
+                "ℹ️ У агента нет выплат, выполненных после 120 минут",
                 "",
             ])
         
@@ -137,34 +148,25 @@ class MessageBuilder:
         if speed_range not in self.messages:
             return ""
         
-        # Получаем список доступных сообщений для этого диапазона
         available_messages = self.messages[speed_range]
         
-        # Проверяем, есть ли у агента сохраненный индекс
         if agent_name not in self.agent_last_type:
-            # Если нет - начинаем с первого
             self.agent_last_type[agent_name] = 0
         elif force_next:
-            # Переходим к следующему типу
             self.agent_last_type[agent_name] = (self.agent_last_type[agent_name] + 1) % len(self.message_types)
         
-        # Получаем индекс типа
         type_index = self.agent_last_type[agent_name]
         message_type = self.message_types[type_index]
         
-        # Возвращаем сообщение
         return available_messages.get(message_type, "")
     
     def reset_agent_counter(self, agent_name: str):
-        """
-        Сбрасывает счетчик для агента (можно использовать при ошибках)
-        """
+        """Сбрасывает счетчик для агента"""
         if agent_name in self.agent_last_type:
             del self.agent_last_type[agent_name]
     
     @staticmethod
     def _get_current_date() -> str:
-        """Возвращает текущую дату"""
         from datetime import datetime
         return datetime.now().strftime('%d.%m.%Y')
 

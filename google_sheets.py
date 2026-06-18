@@ -4,6 +4,7 @@ from google.auth.exceptions import GoogleAuthError
 from config import SERVICE_ACCOUNT_FILE, SPREADSHEET_ID, SHEET_TOTAL_SCORE, SHEET_AR_TEXT
 from logger_setup import logger
 import os
+import json
 
 
 class GoogleSheetsClient:
@@ -19,12 +20,9 @@ class GoogleSheetsClient:
                 raise ValueError(f"❌ Файл {SERVICE_ACCOUNT_FILE} пустой!")
             
             # Читаем email для impersonate из переменной окружения
-            # или используем email из service_account.json
             impersonate_email = os.getenv('IMPERSONATE_EMAIL')
             
             if not impersonate_email:
-                # Если не задан, пробуем взять из service_account.json
-                import json
                 with open(SERVICE_ACCOUNT_FILE, 'r') as f:
                     data = json.load(f)
                     impersonate_email = data.get('client_email')
@@ -40,46 +38,18 @@ class GoogleSheetsClient:
                 scopes=scopes
             )
             
-            # Если указан email для impersonate, подменяем
             if impersonate_email:
                 creds = creds.with_subject(impersonate_email)
                 logger.info(f"✅ Используем impersonate: {impersonate_email}")
             
             self.client = gspread.authorize(creds)
-            
-            # Проверяем доступ к таблице
             self.spreadsheet = self.client.open_by_key(SPREADSHEET_ID)
-            
-            # Проверяем, что листы существуют
             self._check_sheets_exist()
             
             logger.info("✅ Успешное подключение к Google Sheets с impersonate")
             
-        except FileNotFoundError as e:
-            logger.error(f"❌ {e}")
-            raise
-        except ValueError as e:
-            logger.error(f"❌ {e}")
-            raise
-        except GoogleAuthError as e:
-            logger.error(f"❌ Ошибка аутентификации Google: {e}")
-            logger.error("Проверьте service_account.json и права доступа")
-            raise
-        except gspread.exceptions.APIError as e:
-            if "PERMISSION_DENIED" in str(e):
-                logger.error("❌ Ошибка доступа к таблице!")
-                logger.error(f"  - Проверьте ID таблицы: {SPREADSHEET_ID}")
-                logger.error(f"  - Email для impersonate: {impersonate_email if impersonate_email else 'не указан'}")
-                logger.error("  - Убедитесь, что аккаунт имеет доступ к таблице")
-                logger.error("  - Добавьте email пользователя в список доступа к таблице")
-            elif "NOT_FOUND" in str(e):
-                logger.error(f"❌ Таблица с ID {SPREADSHEET_ID} не найдена!")
-                logger.error("Проверьте правильность ID в .env файле")
-            else:
-                logger.error(f"❌ Ошибка API Google Sheets: {e}")
-            raise
         except Exception as e:
-            logger.error(f"❌ Ошибка подключения к Google Sheets: {e}")
+            logger.error(f"❌ Ошибка подключения: {e}")
             raise
 
     def _check_sheets_exist(self):
@@ -127,17 +97,22 @@ class GoogleSheetsClient:
                 if not agent_name or agent_name == 'Agent':
                     continue
                 
+                # Парсим проценты
                 share_0_5 = self._parse_percentage(row[2]) if len(row) > 2 else None
-                share_120 = self._parse_percentage(row[7]) if len(row) > 7 else None
                 
-                # Добавляем агента даже если один из процентов None
-                # (для отладки)
+                # Для 120+ - если значение "(Пусто)" или пусто, то None
+                share_120 = None
+                if len(row) > 7:
+                    value = row[7].strip()
+                    if value and value != '(Пусто)' and value != '':
+                        share_120 = self._parse_percentage(value)
+                
+                # Добавляем агента даже если share_0_5 None (для отладки)
                 agents_data.append({
                     'agent_name': agent_name,
                     'share_0_5': share_0_5,
-                    'share_120': share_120,
-                    'refill_count': row[4] if len(row) > 4 else '0',
-                    'raw_data': row  # для отладки
+                    'share_120': share_120,  # Может быть None если нет данных
+                    'refill_count': row[4] if len(row) > 4 else '0'
                 })
             
             logger.info(f"✅ Загружено {len(agents_data)} агентов с листа Total score")
@@ -146,7 +121,9 @@ class GoogleSheetsClient:
             if agents_data:
                 logger.info("📋 Первые 5 агентов:")
                 for agent in agents_data[:5]:
-                    logger.info(f"  - {agent['agent_name']}: 0-5={agent['share_0_5']}%, 120+={agent['share_120']}%")
+                    share_0_5_str = f"{agent['share_0_5']}%" if agent['share_0_5'] is not None else "Нет данных"
+                    share_120_str = f"{agent['share_120']}%" if agent['share_120'] is not None else "Нет данных"
+                    logger.info(f"  - {agent['agent_name']}: 0-5={share_0_5_str}, 120+={share_120_str}")
             
             return agents_data
             
@@ -198,12 +175,17 @@ class GoogleSheetsClient:
         
         if isinstance(value, str):
             value = value.strip()
+            # Убираем знак процента
             if value.endswith('%'):
                 value = value[:-1]
+            # Заменяем запятую на точку
             value = value.replace(',', '.')
+            # Убираем пробелы
+            value = value.strip()
         
         try:
             num = float(value)
+            # Если число меньше 1 (например, 0.94), умножаем на 100
             if num <= 1:
                 num = num * 100
             return round(num, 1)
