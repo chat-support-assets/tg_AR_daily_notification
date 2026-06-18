@@ -1,52 +1,108 @@
 import gspread
 from google.oauth2.service_account import Credentials
+from google.auth.exceptions import GoogleAuthError
 from config import SERVICE_ACCOUNT_FILE, SPREADSHEET_ID, SHEET_TOTAL_SCORE, SHEET_AR_TEXT
 from logger_setup import logger
+import os
 
 
 class GoogleSheetsClient:
     def __init__(self):
         """Инициализация подключения к Google Sheets"""
         try:
+            # Проверяем наличие файла с ключом
+            if not os.path.exists(SERVICE_ACCOUNT_FILE):
+                raise FileNotFoundError(f"❌ Файл {SERVICE_ACCOUNT_FILE} не найден!")
+            
+            # Проверяем, что файл не пустой
+            if os.path.getsize(SERVICE_ACCOUNT_FILE) == 0:
+                raise ValueError(f"❌ Файл {SERVICE_ACCOUNT_FILE} пустой!")
+            
             scopes = ['https://www.googleapis.com/auth/spreadsheets']
             creds = Credentials.from_service_account_file(
                 SERVICE_ACCOUNT_FILE, 
                 scopes=scopes
             )
             self.client = gspread.authorize(creds)
+            
+            # Проверяем доступ к таблице
             self.spreadsheet = self.client.open_by_key(SPREADSHEET_ID)
+            
+            # Проверяем, что листы существуют
+            self._check_sheets_exist()
+            
             logger.info("✅ Успешное подключение к Google Sheets")
+            
+        except FileNotFoundError as e:
+            logger.error(f"❌ {e}")
+            raise
+        except ValueError as e:
+            logger.error(f"❌ {e}")
+            raise
+        except GoogleAuthError as e:
+            logger.error(f"❌ Ошибка аутентификации Google: {e}")
+            logger.error("Проверьте service_account.json и права доступа")
+            raise
+        except gspread.exceptions.APIError as e:
+            if "PERMISSION_DENIED" in str(e):
+                logger.error("❌ Ошибка доступа к таблице!")
+                logger.error(f"  - Проверьте ID таблицы: {SPREADSHEET_ID}")
+                logger.error("  - Дайте доступ сервисному аккаунту к таблице")
+                logger.error("  - Email сервисного аккаунта указан в service_account.json")
+            elif "NOT_FOUND" in str(e):
+                logger.error(f"❌ Таблица с ID {SPREADSHEET_ID} не найдена!")
+                logger.error("Проверьте правильность ID в .env файле")
+            else:
+                logger.error(f"❌ Ошибка API Google Sheets: {e}")
+            raise
         except Exception as e:
             logger.error(f"❌ Ошибка подключения к Google Sheets: {e}")
             raise
 
+    def _check_sheets_exist(self):
+        """Проверяет существование нужных листов"""
+        try:
+            sheets = self.spreadsheet.worksheets()
+            sheet_names = [sheet.title for sheet in sheets]
+            
+            if SHEET_TOTAL_SCORE not in sheet_names:
+                logger.warning(f"⚠️ Лист '{SHEET_TOTAL_SCORE}' не найден!")
+            else:
+                logger.info(f"✅ Лист '{SHEET_TOTAL_SCORE}' найден")
+            
+            if SHEET_AR_TEXT not in sheet_names:
+                logger.warning(f"⚠️ Лист '{SHEET_AR_TEXT}' не найден!")
+            else:
+                logger.info(f"✅ Лист '{SHEET_AR_TEXT}' найден")
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки листов: {e}")
+
     def get_total_score_data(self):
-        """
-        Получение данных с листа Total score
-        Возвращает список словарей с данными агентов
-        """
+        """Получение данных с листа Total score"""
         try:
             sheet = self.spreadsheet.worksheet(SHEET_TOTAL_SCORE)
             records = sheet.get_all_values()
             
+            if not records:
+                logger.warning(f"⚠️ Лист '{SHEET_TOTAL_SCORE}' пуст!")
+                return []
+            
             agents_data = []
             
             for row in records:
-                # Пропускаем пустые строки и заголовки
-                if not row or not row[0] or row[0].startswith('Agent'):
+                if not row or not row[0]:
                     continue
                 
                 agent_name = row[0].strip()
                 
-                # Проверяем, что это строка с агентом
-                if not agent_name or agent_name.startswith('Agent'):
+                # Пропускаем заголовки
+                if agent_name.startswith('Agent') or agent_name.startswith('Name'):
                     continue
                 
-                # Парсим проценты
                 share_0_5 = self._parse_percentage(row[2]) if len(row) > 2 else None
                 share_120 = self._parse_percentage(row[7]) if len(row) > 7 else None
                 
-                # Проверяем, что оба показателя есть
                 if share_0_5 is not None and share_120 is not None:
                     agents_data.append({
                         'agent_name': agent_name,
@@ -63,30 +119,26 @@ class GoogleSheetsClient:
             return []
 
     def get_ar_messages(self):
-        """
-        Получение всех текстов сообщений с листа AR_text
-        Возвращает словарь: {speed_range: {'first': text, 'second': text, ...}}
-        """
+        """Получение всех текстов сообщений с листа AR_text"""
         try:
             sheet = self.spreadsheet.worksheet(SHEET_AR_TEXT)
             records = sheet.get_all_values()
             
-            # Словарь для всех сообщений по диапазонам
+            if not records:
+                logger.warning(f"⚠️ Лист '{SHEET_AR_TEXT}' пуст!")
+                return {}
+            
             all_messages = {}
             
-            # Строки 2-6 (индексы 1-5) содержат сообщения
-            # Столбцы: A=диапазон, H=first, I=second, J=third, K=fourth, L=fifth
             for row in records[1:]:  # Пропускаем заголовок
                 if not row or len(row) < 12:
                     continue
                 
                 speed_range = row[0].strip()
                 
-                # Проверяем, что это диапазон скорости
                 if speed_range not in ['94+', '90-94', '85-90', '80-84.9', 'Ниже 80']:
                     continue
                 
-                # Загружаем все 5 вариантов сообщений
                 all_messages[speed_range] = {
                     'first': row[7].strip() if len(row) > 7 else '',
                     'second': row[8].strip() if len(row) > 8 else '',
@@ -104,9 +156,7 @@ class GoogleSheetsClient:
 
     @staticmethod
     def _parse_percentage(value):
-        """
-        Парсит процент из строки или числа
-        """
+        """Парсит процент из строки или числа"""
         if not value:
             return None
         
