@@ -113,28 +113,41 @@ class GoogleSheetsClient:
             
             agents_data = []
             
-            for row in records:
+            # Пропускаем первую строку с заголовками
+            for i, row in enumerate(records):
+                if i == 0:  # Пропускаем заголовки
+                    continue
+                
                 if not row or not row[0]:
                     continue
                 
                 agent_name = row[0].strip()
                 
-                # Пропускаем заголовки
-                if agent_name.startswith('Agent') or agent_name.startswith('Name'):
+                # Проверяем, что это не пустая строка
+                if not agent_name or agent_name == 'Agent':
                     continue
                 
                 share_0_5 = self._parse_percentage(row[2]) if len(row) > 2 else None
                 share_120 = self._parse_percentage(row[7]) if len(row) > 7 else None
                 
-                if share_0_5 is not None and share_120 is not None:
-                    agents_data.append({
-                        'agent_name': agent_name,
-                        'share_0_5': share_0_5,
-                        'share_120': share_120,
-                        'refill_count': row[4] if len(row) > 4 else '0'
-                    })
+                # Добавляем агента даже если один из процентов None
+                # (для отладки)
+                agents_data.append({
+                    'agent_name': agent_name,
+                    'share_0_5': share_0_5,
+                    'share_120': share_120,
+                    'refill_count': row[4] if len(row) > 4 else '0',
+                    'raw_data': row  # для отладки
+                })
             
             logger.info(f"✅ Загружено {len(agents_data)} агентов с листа Total score")
+            
+            # Логируем первых 5 агентов для отладки
+            if agents_data:
+                logger.info("📋 Первые 5 агентов:")
+                for agent in agents_data[:5]:
+                    logger.info(f"  - {agent['agent_name']}: 0-5={agent['share_0_5']}%, 120+={agent['share_120']}%")
+            
             return agents_data
             
         except Exception as e:

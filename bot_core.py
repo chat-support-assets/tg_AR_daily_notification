@@ -4,7 +4,7 @@ from typing import Optional, Dict
 from datetime import datetime
 from telegram import Bot, Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from telegram.error import TelegramError, BadRequest
+from telegram.error import TelegramError, BadRequest, Conflict
 from google_sheets import GoogleSheetsClient
 from message_handler import AgentParser, MessageBuilder, should_process_agent
 from agent_manager import agent_manager
@@ -16,11 +16,6 @@ class RefillBot:
     """Основной бот для отчетов и прослушивания"""
     
     def __init__(self, token: str, bot_type: str):
-        """
-        Инициализация бота
-        :param token: Токен бота из BotFather
-        :param bot_type: 'INR' или 'OTHER'
-        """
         self.token = token
         self.bot_type = bot_type
         self.topic_name = TOPIC_NAME
@@ -28,11 +23,7 @@ class RefillBot:
         self.message_builder = MessageBuilder(self.sheets.get_ar_messages())
         self.agent_manager = agent_manager
         self.application = None
-        
-        # Флаг для отслеживания готовности
         self.is_ready = False
-        
-        # Счетчики для статистики
         self.stats = {
             'processed': 0,
             'skipped': 0,
@@ -43,34 +34,51 @@ class RefillBot:
     
     async def initialize(self):
         """Инициализация бота с обработчиками"""
-        self.application = Application.builder().token(self.token).build()
-        
-        # Обработчик для всех сообщений в группах
-        self.application.add_handler(
-            MessageHandler(
-                filters.TEXT & filters.ChatType.GROUP,
-                self.handle_message
+        try:
+            self.application = Application.builder().token(self.token).build()
+            
+            # Обработчик для всех сообщений в группах
+            self.application.add_handler(
+                MessageHandler(
+                    filters.TEXT & filters.ChatType.GROUP,
+                    self.handle_message
+                )
             )
-        )
-        
-        # Обработчик для новых участников группы
-        self.application.add_handler(
-            MessageHandler(
-                filters.StatusUpdate.NEW_CHAT_MEMBERS,
-                self.handle_new_member
+            
+            # Обработчик для новых участников группы
+            self.application.add_handler(
+                MessageHandler(
+                    filters.StatusUpdate.NEW_CHAT_MEMBERS,
+                    self.handle_new_member
+                )
             )
-        )
-        
-        # Запускаем бота
-        await self.application.initialize()
-        await self.application.start()
-        await self.application.updater.start_polling()
-        
-        self.is_ready = True
-        logger.info(f"✅ Бот {self.bot_type} инициализирован и запущен")
+            
+            # Запускаем бота с обработкой конфликтов
+            await self.application.initialize()
+            await self.application.start()
+            
+            # Пытаемся запустить polling с обработкой конфликтов
+            try:
+                await self.application.updater.start_polling()
+                self.is_ready = True
+                logger.info(f"✅ Бот {self.bot_type} инициализирован и запущен")
+            except Conflict as e:
+                logger.error(f"❌ Конфликт бота {self.bot_type}: {e}")
+                logger.info(f"ℹ️ Возможно бот {self.bot_type} уже запущен в другом месте")
+                self.is_ready = False
+                raise
+            
+        except Conflict as e:
+            logger.error(f"❌ Бот {self.bot_type} не может быть запущен из-за конфликта")
+            self.is_ready = False
+            raise
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации бота {self.bot_type}: {e}")
+            self.is_ready = False
+            raise
         
         return self.application
-    
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Обработчик сообщений в группах для автоматического определения ID топиков

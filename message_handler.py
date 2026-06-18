@@ -6,16 +6,10 @@ import random
 
 
 class AgentParser:
-    """Парсинг имени агента"""
-    
     @staticmethod
     def parse_agent_name(agent_name: str) -> Tuple[Optional[str], Optional[str]]:
         """
         Парсит имя агента и возвращает группу и ГЕО
-        Примеры:
-        - Agent_German_TND -> ('German', 'TND')
-        - CORP_Partner_Joe_goldberg90_INR -> ('Partner_Joe_goldberg90', 'INR')
-        - Agent_lemonchili_NPR -> ('lemonchili', 'NPR')
         """
         if not agent_name:
             return None, None
@@ -23,24 +17,22 @@ class AgentParser:
         # Разбиваем по нижнему подчеркиванию
         parts = agent_name.split('_')
         
-        if len(parts) < 2:
+        if len(parts) < 3:
             logger.warning(f"⚠️ Неверный формат имени агента: {agent_name}")
             return None, None
         
-        # ГЕО - всегда последняя часть
+        # ГЕО - всегда последняя часть (3 буквы)
         geo = parts[-1].upper()
         
-        # Группа - все между первым и последним подчеркиванием
-        # Если частей больше 2, объединяем их обратно через '_'
-        if len(parts) > 2:
-            group_name = '_'.join(parts[1:-1])
-        else:
-            group_name = parts[1]
-        
-        # Проверяем, что ГЕО состоит из 3 букв (валидация)
+        # Проверяем, что ГЕО состоит из 3 букв
         if not re.match(r'^[A-Z]{3}$', geo):
             logger.warning(f"⚠️ Неверный формат ГЕО: {geo} в агенте {agent_name}")
             return None, None
+        
+        # Группа - все между первым и последним подчеркиванием
+        # Пропускаем первый элемент (Agent или CORP и т.д.)
+        group_parts = parts[1:-1]
+        group_name = '_'.join(group_parts) if group_parts else parts[1]
         
         return group_name, geo
 

@@ -5,48 +5,75 @@ import argparse
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from bot_core import initialize_bots, run_daily_reports, shutdown_bots
+from bot_core import RefillBot, run_daily_reports, shutdown_bots
 from logger_setup import logger
+from config import BOT_INR_TOKEN, BOT_OTHER_TOKEN
 
 
 class BotManager:
-    """Менеджер для управления ботами и расписанием"""
-    
     def __init__(self, manual_mode=False):
         self.scheduler = None
         self.running = True
         self.manual_mode = manual_mode
+        self.bot_inr = None
+        self.bot_other = None
         
-        # Настройка обработчиков сигналов
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
     
     def signal_handler(self, signum, frame):
-        """Обработчик сигналов для graceful shutdown"""
         logger.info(f"⏹️ Получен сигнал {signum}. Останавливаем ботов...")
         self.running = False
     
     async def run(self):
-        """Основной метод запуска"""
         try:
             logger.info("🚀 Запуск системы...")
             
-            # Инициализация ботов
-            await initialize_bots()
+            # Инициализируем ботов по отдельности
+            try:
+                self.bot_inr = RefillBot(BOT_INR_TOKEN, 'INR')
+                await self.bot_inr.initialize()
+                logger.info("✅ Бот INR запущен")
+            except Exception:
+                logger.warning("⚠️ Бот INR уже запущен в другом месте. Пропускаем...")
+                self.bot_inr = None
+            
+            try:
+                self.bot_other = RefillBot(BOT_OTHER_TOKEN, 'OTHER')
+                await self.bot_other.initialize()
+                logger.info("✅ Бот OTHER запущен")
+            except Exception:
+                logger.warning("⚠️ Бот OTHER уже запущен в другом месте. Пропускаем...")
+                self.bot_other = None
+            
+            # Проверяем, что хотя бы один бот запущен
+            if not self.bot_inr and not self.bot_other:
+                logger.error("❌ Ни один бот не может быть запущен!")
+                return
             
             if self.manual_mode:
-                # Ручной режим - сразу запускаем отчеты
                 logger.info("📊 Ручной режим: запуск отчетов...")
-                await run_daily_reports()
-                logger.info("✅ Отчеты выполнены. Боты продолжают работать.")
+                
+                # Запускаем отчеты только для активных ботов
+                tasks = []
+                if self.bot_inr:
+                    tasks.append(self.bot_inr.run_daily_report())
+                if self.bot_other:
+                    tasks.append(self.bot_other.run_daily_report())
+                
+                if tasks:
+                    await asyncio.gather(*tasks)
+                    logger.info("✅ Отчеты выполнены. Боты продолжают работать.")
+                else:
+                    logger.warning("⚠️ Нет активных ботов для выполнения отчетов")
+                
                 logger.info("Нажмите Ctrl+C для остановки")
             else:
-                # Автоматический режим - настраиваем планировщик
                 self.scheduler = AsyncIOScheduler()
                 
                 # Запуск отчетов каждый день в 10:00
                 self.scheduler.add_job(
-                    run_daily_reports,
+                    self._run_reports,
                     CronTrigger(hour=10, minute=0),
                     id='daily_refill_report'
                 )
@@ -69,23 +96,38 @@ class BotManager:
         finally:
             await self.shutdown()
     
+    async def _run_reports(self):
+        """Запуск отчетов для активных ботов"""
+        logger.info(f"⏰ Запуск отчетов по расписанию в {datetime.now().strftime('%H:%M:%S')}")
+        
+        tasks = []
+        if self.bot_inr and self.bot_inr.is_ready:
+            tasks.append(self.bot_inr.run_daily_report())
+        if self.bot_other and self.bot_other.is_ready:
+            tasks.append(self.bot_other.run_daily_report())
+        
+        if tasks:
+            await asyncio.gather(*tasks)
+            logger.info("✅ Плановые отчеты завершены")
+        else:
+            logger.warning("⚠️ Нет активных ботов для выполнения отчетов")
+    
     async def shutdown(self):
-        """Graceful shutdown системы"""
         logger.info("🔄 Остановка системы...")
         
-        # Останавливаем планировщик
         if self.scheduler:
             self.scheduler.shutdown()
             logger.info("✅ Планировщик остановлен")
         
-        # Останавливаем ботов
-        await shutdown_bots()
+        if self.bot_inr:
+            await self.bot_inr.shutdown()
+        if self.bot_other:
+            await self.bot_other.shutdown()
         
         logger.info("✅ Система полностью остановлена")
 
 
 async def main():
-    """Точка входа с поддержкой аргументов командной строки"""
     parser = argparse.ArgumentParser(description='Бот для отчетов по скорости рефилов')
     parser.add_argument(
         '--manual',
@@ -101,15 +143,26 @@ async def main():
     args = parser.parse_args()
     
     if args.test:
-        # Тестовый режим - выполняем отчет и выходим
         logger.info("🧪 Тестовый режим...")
-        await initialize_bots()
-        await run_daily_reports()
-        await shutdown_bots()
+        try:
+            bot_inr = RefillBot(BOT_INR_TOKEN, 'INR')
+            await bot_inr.initialize()
+            await bot_inr.run_daily_report()
+            await bot_inr.shutdown()
+        except Exception:
+            logger.warning("⚠️ Бот INR уже запущен. Пропускаем...")
+        
+        try:
+            bot_other = RefillBot(BOT_OTHER_TOKEN, 'OTHER')
+            await bot_other.initialize()
+            await bot_other.run_daily_report()
+            await bot_other.shutdown()
+        except Exception:
+            logger.warning("⚠️ Бот OTHER уже запущен. Пропускаем...")
+        
         logger.info("✅ Тестовый режим завершен")
         return
     
-    # Основной режим
     manager = BotManager(manual_mode=args.manual)
     await manager.run()
 
