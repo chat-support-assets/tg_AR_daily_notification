@@ -1,7 +1,8 @@
-# bot_core.py - с автоматическим поиском существующих топиков
+# bot_core.py - Полностью исправленная версия
 
 import asyncio
 import json
+import random
 from typing import Optional, Dict, List
 from datetime import datetime
 from telegram import Bot, Update
@@ -21,8 +22,8 @@ class RefillBot:
         self.token = token
         self.bot_type = bot_type
         self.topic_name = TOPIC_NAME
-        self.sheets = GoogleSheetsClient()
-        self.message_builder = MessageBuilder(self.sheets.get_ar_messages())
+        self.sheets = None  # Будет инициализирован позже
+        self.message_builder = None
         self.agent_manager = agent_manager
         self.application = None
         self.is_ready = False
@@ -41,6 +42,15 @@ class RefillBot:
     async def initialize(self):
         """Инициализация бота с обработчиками"""
         try:
+            # Инициализируем Google Sheets с небольшой случайной задержкой
+            # чтобы оба бота не обращались одновременно
+            delay = random.uniform(0.5, 2.0)
+            logger.info(f"⏳ Задержка {delay:.1f} сек перед инициализацией Google Sheets...")
+            await asyncio.sleep(delay)
+            
+            self.sheets = GoogleSheetsClient()
+            self.message_builder = MessageBuilder(self.sheets.get_ar_messages())
+            
             self.application = Application.builder().token(self.token).build()
             
             # Обработчик для всех текстовых сообщений в группах
@@ -119,14 +129,16 @@ class RefillBot:
                 logger.info(f"🔍 Ищем топик '{self.topic_name}' в группе {group_name}")
                 
                 try:
-                    # Пытаемся найти топик через отправку тестового сообщения
-                    # Сначала пробуем отправить в главный чат с инструкцией
+                    # Отправляем сообщение с просьбой написать в топик
                     await self.application.bot.send_message(
                         chat_id=chat_id,
                         text=f"🔍 **Поиск топика '{self.topic_name}'**\n\n"
-                             f"Бот ищет топик для отправки отчетов.\n"
-                             f"Если топик '{self.topic_name}' существует, "
-                             f"напишите любое сообщение в него.",
+                             f"Я ищу топик для отправки отчетов.\n\n"
+                             f"Если в этой группе уже есть топик **{self.topic_name}**,\n"
+                             f"пожалуйста, напишите любое сообщение в этот топик.\n\n"
+                             f"Если топика нет - создайте его с названием **{self.topic_name}**\n"
+                             f"и напишите сообщение туда.\n\n"
+                             f"Бот автоматически определит топик и настроится!",
                         parse_mode='Markdown'
                     )
                     
@@ -280,10 +292,6 @@ class RefillBot:
         logger.info(f"🔍 Проверяем наличие топика '{self.topic_name}' в группе {group_name}")
         
         try:
-            # Пробуем отправить тестовое сообщение в возможные топики
-            # В текущей версии python-telegram-bot нет метода для получения списка топиков
-            # Поэтому используем альтернативный подход: просим пользователя написать в топик
-            
             # Проверяем, нет ли уже сохраненного топика
             agent_data = self.agent_manager.get_agent(group_name)
             if agent_data and agent_data.get('topic_id'):
@@ -338,6 +346,12 @@ class RefillBot:
         logger.info(f"🚀 Запуск ежедневного отчета для бота {self.bot_type}")
         
         try:
+            # Добавляем случайную задержку перед чтением таблицы
+            # чтобы оба бота не обращались одновременно
+            delay = random.uniform(1.0, 3.0)
+            logger.info(f"⏳ Задержка {delay:.1f} секунд перед чтением таблицы...")
+            await asyncio.sleep(delay)
+            
             # Получаем данные агентов
             agents_data = self.sheets.get_total_score_data()
             
@@ -348,10 +362,13 @@ class RefillBot:
             # Сбрасываем счетчики
             self._reset_stats()
             
-            # Обрабатываем каждого агента
-            for agent_data in agents_data:
+            # Обрабатываем каждого агента с задержкой между отправками
+            for idx, agent_data in enumerate(agents_data):
                 try:
                     await self._process_agent(agent_data)
+                    # Задержка между отправками сообщений (чтобы не спамить)
+                    if idx < len(agents_data) - 1:
+                        await asyncio.sleep(random.uniform(0.5, 1.5))
                 except Exception as e:
                     logger.error(f"❌ Ошибка при обработке агента {agent_data.get('agent_name', 'Unknown')}: {e}")
                     self.stats['errors'] += 1
@@ -363,7 +380,9 @@ class RefillBot:
             logger.error(f"❌ Критическая ошибка при выполнении отчета: {e}")
     
     async def _process_agent(self, agent_data: dict):
-        """Обрабатывает одного агента"""
+        """
+        Обрабатывает одного агента
+        """
         agent_name = agent_data['agent_name']
         share_0_5 = agent_data['share_0_5']
         share_120 = agent_data['share_120']
@@ -402,7 +421,9 @@ class RefillBot:
             logger.error(f"❌ Не удалось отправить сообщение агенту {agent_name}")
     
     async def _send_to_agent(self, group_name: str, message: str) -> bool:
-        """Отправляет сообщение агенту"""
+        """
+        Отправляет сообщение агенту
+        """
         try:
             # Получаем данные из кэша
             chat_id = self.agent_manager.get_chat_id(group_name)
@@ -412,6 +433,7 @@ class RefillBot:
             if not chat_id:
                 all_agents = self.agent_manager.get_all_agents()
                 
+                # Ищем точное совпадение (без учета регистра)
                 for name, data in all_agents.items():
                     if name.lower() == group_name.lower():
                         chat_id = data.get('chat_id')
@@ -419,6 +441,7 @@ class RefillBot:
                         logger.info(f"🔍 Найдено совпадение для {group_name} -> {name}")
                         break
                 
+                # Если все равно не нашли, логируем и пропускаем
                 if not chat_id:
                     logger.error(f"❌ Нет chat_id для группы {group_name}")
                     logger.info(f"ℹ️ Доступные группы в кэше: {list(all_agents.keys())}")
@@ -465,6 +488,7 @@ class RefillBot:
                             text=message,
                             parse_mode='Markdown'
                         )
+                        # Обновляем topic_id на None
                         self.agent_manager.update_topic_id(group_name, None)
                         return True
                     except:
