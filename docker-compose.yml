@@ -1,28 +1,22 @@
 version: '3.8'
 
 services:
-  refill-bot-inr:
+  refill-bot:
     build: .
-    container_name: refill-bot-inr
+    container_name: refill-bot
     restart: unless-stopped
     environment:
       - TZ=Europe/Moscow
+      - PYTHONUNBUFFERED=1
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/service_account.json
     volumes:
-      # Монтируем папку с логами для сохранения между перезапусками
       - ./logs:/app/logs
-      # Монтируем файл кэша агентов
       - ./agents.json:/app/agents.json
-      # Монтируем файл с ключом Google
       - ./service_account.json:/app/service_account.json:ro
-      # Монтируем .env файл
       - ./.env:/app/.env:ro
     networks:
       - refill-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+    command: ["python", "main.py"]
 
 networks:
   refill-network:
