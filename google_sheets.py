@@ -8,7 +8,7 @@ import os
 
 class GoogleSheetsClient:
     def __init__(self):
-        """Инициализация подключения к Google Sheets"""
+        """Инициализация подключения к Google Sheets с impersonate"""
         try:
             # Проверяем наличие файла с ключом
             if not os.path.exists(SERVICE_ACCOUNT_FILE):
@@ -18,11 +18,33 @@ class GoogleSheetsClient:
             if os.path.getsize(SERVICE_ACCOUNT_FILE) == 0:
                 raise ValueError(f"❌ Файл {SERVICE_ACCOUNT_FILE} пустой!")
             
+            # Читаем email для impersonate из переменной окружения
+            # или используем email из service_account.json
+            impersonate_email = os.getenv('IMPERSONATE_EMAIL')
+            
+            if not impersonate_email:
+                # Если не задан, пробуем взять из service_account.json
+                import json
+                with open(SERVICE_ACCOUNT_FILE, 'r') as f:
+                    data = json.load(f)
+                    impersonate_email = data.get('client_email')
+                    logger.info(f"📧 Используем email из service_account.json: {impersonate_email}")
+            else:
+                logger.info(f"📧 Используем email из .env: {impersonate_email}")
+            
             scopes = ['https://www.googleapis.com/auth/spreadsheets']
+            
+            # Создаем учетные данные с impersonate
             creds = Credentials.from_service_account_file(
                 SERVICE_ACCOUNT_FILE, 
                 scopes=scopes
             )
+            
+            # Если указан email для impersonate, подменяем
+            if impersonate_email:
+                creds = creds.with_subject(impersonate_email)
+                logger.info(f"✅ Используем impersonate: {impersonate_email}")
+            
             self.client = gspread.authorize(creds)
             
             # Проверяем доступ к таблице
@@ -31,7 +53,7 @@ class GoogleSheetsClient:
             # Проверяем, что листы существуют
             self._check_sheets_exist()
             
-            logger.info("✅ Успешное подключение к Google Sheets")
+            logger.info("✅ Успешное подключение к Google Sheets с impersonate")
             
         except FileNotFoundError as e:
             logger.error(f"❌ {e}")
@@ -47,8 +69,9 @@ class GoogleSheetsClient:
             if "PERMISSION_DENIED" in str(e):
                 logger.error("❌ Ошибка доступа к таблице!")
                 logger.error(f"  - Проверьте ID таблицы: {SPREADSHEET_ID}")
-                logger.error("  - Дайте доступ сервисному аккаунту к таблице")
-                logger.error("  - Email сервисного аккаунта указан в service_account.json")
+                logger.error(f"  - Email для impersonate: {impersonate_email if impersonate_email else 'не указан'}")
+                logger.error("  - Убедитесь, что аккаунт имеет доступ к таблице")
+                logger.error("  - Добавьте email пользователя в список доступа к таблице")
             elif "NOT_FOUND" in str(e):
                 logger.error(f"❌ Таблица с ID {SPREADSHEET_ID} не найдена!")
                 logger.error("Проверьте правильность ID в .env файле")
