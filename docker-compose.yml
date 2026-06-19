@@ -18,7 +18,7 @@ services:
     networks:
       - refill-network
     # Запускаем только ОДИН контейнер, который управляет обоими ботами
-    command: ["python", "main.py"]
+    command: ["python", "test_bot.py"]
 
 networks:
   refill-network:

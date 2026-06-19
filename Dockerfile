@@ -20,4 +20,4 @@ COPY . .
 RUN mkdir -p logs
 
 # Запускаем бота
-CMD ["python", "main.py"]
+CMD ["python", "test_bot.py"]

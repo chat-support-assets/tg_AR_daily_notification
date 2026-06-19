@@ -1,10 +1,9 @@
-# agent_manager.py - с улучшенным поиском
-
 import json
 import os
 from typing import Dict, Optional
 from logger_setup import logger
 from config import AGENTS_CACHE_FILE
+from datetime import datetime
 
 
 class AgentManager:
@@ -25,14 +24,14 @@ class AgentManager:
                 with open(self.cache_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     if not isinstance(data, dict):
-                        logger.warning(f"⚠️ Файл {self.cache_file} содержит неверный формат. Создаем новый.")
+                        logger.warning(f"⚠️ Файл {self.cache_file} содержит неверный формат.")
                         return {}
                     
                     logger.info(f"✅ Загружено {len(data)} агентов из кэша")
                     return data
                     
             except json.JSONDecodeError as e:
-                logger.error(f"❌ Ошибка парсинга JSON в {self.cache_file}: {e}")
+                logger.error(f"❌ Ошибка парсинга JSON: {e}")
                 backup_file = f"{self.cache_file}.backup"
                 try:
                     os.rename(self.cache_file, backup_file)
@@ -57,6 +56,35 @@ class AgentManager:
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения кэша: {e}")
     
+    def update_agent(self, group_name: str, chat_id: int, topic_id: Optional[int] = None):
+        """Обновляет или создает данные агента"""
+        if group_name not in self.agents_data:
+            self.agents_data[group_name] = {
+                'chat_id': chat_id,
+                'topic_id': topic_id,
+                'last_update': self._get_timestamp()
+            }
+            logger.info(f"➕ Добавлен новый агент: {group_name}")
+        else:
+            self.agents_data[group_name]['chat_id'] = chat_id
+            if topic_id is not None:
+                self.agents_data[group_name]['topic_id'] = topic_id
+            self.agents_data[group_name]['last_update'] = self._get_timestamp()
+            logger.info(f"🔄 Обновлен агент: {group_name}")
+        
+        self.save_cache()
+        logger.info(f"   Chat ID: {chat_id}, Topic ID: {topic_id}")
+    
+    def update_topic_id(self, group_name: str, topic_id: Optional[int]):
+        """Обновляет только ID топика"""
+        if group_name in self.agents_data:
+            self.agents_data[group_name]['topic_id'] = topic_id
+            self.agents_data[group_name]['last_update'] = self._get_timestamp()
+            self.save_cache()
+            logger.info(f"✅ Обновлен ID топика для {group_name}: {topic_id}")
+        else:
+            logger.warning(f"⚠️ Агент {group_name} не найден в кэше")
+    
     def get_agent(self, group_name: str) -> Optional[Dict]:
         """Получает данные агента по имени группы"""
         # Точное совпадение
@@ -69,33 +97,6 @@ class AgentManager:
                 return data
         
         return None
-    
-    def update_agent(self, group_name: str, chat_id: int, topic_id: Optional[int] = None):
-        """Обновляет или создает данные агента"""
-        if group_name not in self.agents_data:
-            self.agents_data[group_name] = {
-                'chat_id': chat_id,
-                'topic_id': topic_id,
-                'last_update': self._get_timestamp()
-            }
-        else:
-            self.agents_data[group_name]['chat_id'] = chat_id
-            if topic_id is not None:
-                self.agents_data[group_name]['topic_id'] = topic_id
-            self.agents_data[group_name]['last_update'] = self._get_timestamp()
-        
-        self.save_cache()
-        logger.info(f"✅ Обновлены данные агента {group_name}: chat_id={chat_id}, topic_id={topic_id}")
-    
-    def update_topic_id(self, group_name: str, topic_id: Optional[int]):
-        """Обновляет только ID топика"""
-        if group_name in self.agents_data:
-            self.agents_data[group_name]['topic_id'] = topic_id
-            self.agents_data[group_name]['last_update'] = self._get_timestamp()
-            self.save_cache()
-            logger.info(f"✅ Обновлен ID топика для {group_name}: {topic_id}")
-        else:
-            logger.warning(f"⚠️ Агент {group_name} не найден в кэше")
     
     def get_chat_id(self, group_name: str) -> Optional[int]:
         """Получает ID чата по имени группы"""
@@ -128,6 +129,21 @@ class AgentManager:
                 return True
         
         return False
+    
+    def print_agents(self):
+        """Выводит всех агентов в читаемом виде"""
+        if not self.agents_data:
+            print("📭 Нет сохраненных агентов")
+            return
+        
+        print("\n📋 Сохраненные агенты:")
+        print("=" * 60)
+        for name, data in self.agents_data.items():
+            print(f"\n📌 {name}")
+            print(f"   Chat ID: {data['chat_id']}")
+            print(f"   Topic ID: {data.get('topic_id', 'Не задан')}")
+            print(f"   Обновлен: {data.get('last_update', 'Неизвестно')}")
+        print("=" * 60)
     
     @staticmethod
     def _get_timestamp():
