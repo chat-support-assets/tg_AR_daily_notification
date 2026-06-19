@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Dict, List
 from enum import Enum
+from datetime import datetime
 
 
 class GeoCode(str, Enum):
@@ -27,6 +28,15 @@ class AgentData:
 
 
 @dataclass
+class GroupInfo:
+    """Информация о группе"""
+    group_name: str
+    chat_id: int
+    topic_id: Optional[int] = None
+    last_update: str = datetime.now().isoformat()
+
+
+@dataclass
 class SpeedMessage:
     """Сообщение для конкретной скорости"""
     speed_range: str       # '94+', '90-94', и т.д.
@@ -48,6 +58,17 @@ class GeoMessages:
     """Все сообщения для одного ГЕО"""
     geo: str
     messages: Dict[str, SpeedMessage]  # {speed_range: SpeedMessage}
+    
+    def get_message_for_speed(self, speed_range: str) -> Optional[SpeedMessage]:
+        """Получить сообщение для конкретной скорости"""
+        return self.messages.get(speed_range)
+    
+    def get_random_message_for_speed(self, speed_range: str) -> Optional[str]:
+        """Получить случайное сообщение для конкретной скорости"""
+        msg = self.messages.get(speed_range)
+        if msg:
+            return msg.get_random_message()
+        return None
 
 
 @dataclass
