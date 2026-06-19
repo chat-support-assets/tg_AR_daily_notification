@@ -195,6 +195,18 @@ class TestBot:
             logger.info(f"✅ Тестовый бот {self.bot_type} запущен")
             logger.info("📌 Ожидание сообщений...")
             logger.info("   Напишите сообщение в группе или топике для сохранения ID")
+            self.application.add_handler(
+                MessageHandler(
+                    filters.TEXT & filters.ChatType.PRIVATE,
+                    self.handle_private_message
+                )
+            )
+
+            async def handle_private_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+                """Обработчик личных сообщений для проверки"""
+                message = update.effective_message
+                logger.info(f"📩 [PRIVATE] Получено сообщение от {message.from_user.full_name}: {message.text}")
+                await message.reply_text(f"✅ Бот работает! Вы написали: {message.text}")
             
             while self.running:
                 await asyncio.sleep(1)
