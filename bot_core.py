@@ -8,7 +8,7 @@ from datetime import datetime
 from telegram import Bot, Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from telegram.error import TelegramError, BadRequest, Conflict
-from google_sheets import GoogleSheetsClient
+from google_sheets_old import GoogleSheetsClient
 from message_handler import AgentParser, MessageBuilder, should_process_agent
 from agent_manager import agent_manager
 from logger_setup import logger

@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from google_sheets import GoogleSheetsClient
+from google_sheets_old import GoogleSheetsClient
 from logger_setup import logger
 
 
