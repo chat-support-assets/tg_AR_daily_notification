@@ -37,6 +37,17 @@ class TestBot:
         chat = update.effective_chat
         message = update.effective_message
         
+        # ДЕБАГ: логируем ВСЕ входящие сообщения
+        logger.info(f"🔍 [ДЕБАГ] Получено сообщение:")
+        logger.info(f"   Chat ID: {chat.id if chat else 'None'}")
+        logger.info(f"   Chat Type: {chat.type if chat else 'None'}")
+        logger.info(f"   Chat Title: {chat.title if chat else 'None'}")
+        logger.info(f"   Message ID: {message.message_id if message else 'None'}")
+        logger.info(f"   Topic ID: {message.message_thread_id if message else 'None'}")
+        logger.info(f"   From User: {message.from_user.full_name if message and message.from_user else 'None'}")
+        logger.info(f"   Is Bot: {message.from_user.is_bot if message and message.from_user else 'None'}")
+        logger.info(f"   Text: {message.text if message and message.text else 'None'}")
+        
         # Проверяем, что это группа
         if chat.type not in ['group', 'supergroup']:
             try:
@@ -47,25 +58,18 @@ class TestBot:
         
         # Проверяем, что сообщение от пользователя (не от бота)
         if not message.from_user or message.from_user.is_bot:
+            logger.info("   ⏭️ Пропускаем: сообщение от бота")
             return
         
         # Получаем данные
         group_name = chat.title
         chat_id = chat.id
         topic_id = message.message_thread_id  # None если не в топике
-        user_name = message.from_user.full_name or message.from_user.username or "Пользователь"
         
-        # Определяем, в топике сообщение или нет
-        location = "ТОПИК" if topic_id else "ГРУППА"
-        topic_info = f" (ID топика: {topic_id})" if topic_id else ""
-        
-        # Логируем
-        logger.info(f"📩 [{self.bot_type}] Сообщение из {location}")
+        logger.info(f"📩 [{self.bot_type}] Сохранение данных:")
         logger.info(f"   Группа: {group_name}")
         logger.info(f"   Chat ID: {chat_id}")
         logger.info(f"   Topic ID: {topic_id}")
-        logger.info(f"   От: {user_name}")
-        logger.info(f"   Текст: {message.text[:50] if message.text else '...'}...")
         
         # Сохраняем в agent_manager
         agent_manager.update_agent(
