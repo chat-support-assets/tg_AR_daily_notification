@@ -15,7 +15,6 @@ services:
       - ./.env:/app/.env:ro
     networks:
       - refill-network
-    # Для обычного режима (прослушивание)
     command: ["python", "main.py"]
 
 networks:

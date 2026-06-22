@@ -1,9 +1,6 @@
-#!/usr/bin/env python
-# main.py - Точка входа
-
 import asyncio
 import argparse
-from bot_telethon import RefillBot, run_inr_bot, run_other_bot
+from bot_aiogram import RefillBot, run_inr_bot, run_other_bot
 from config import BOT_INR_TOKEN, BOT_OTHER_TOKEN
 from logger_setup import logger
 
@@ -48,6 +45,7 @@ async def main():
         elif args.bot == 'other':
             await run_other_bot()
         else:
+            # Запускаем обоих ботов параллельно
             await asyncio.gather(run_inr_bot(), run_other_bot())
             
     except KeyboardInterrupt:
