@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-# bot_telethon.py - Боты на Telethon с правильным определением topic_id
+# bot_telethon.py - Боты на Telethon (исправленная версия)
 
 import asyncio
 from datetime import datetime
 from typing import Optional
 from telethon import TelegramClient, events
 from telethon.errors import RPCError
-from telethon.tl.types import Message
+from telethon.tl.types import Message, Channel
 
 from config import (
     BOT_INR_TOKEN, BOT_OTHER_TOKEN,
@@ -93,6 +93,13 @@ class RefillBot:
         chat_id = chat.id
         chat_title = chat.title
         
+        # Проверяем, является ли чат форумом (имеет топики)
+        is_forum = False
+        if hasattr(chat, 'forum'):
+            is_forum = chat.forum
+        elif hasattr(chat, 'is_forum'):
+            is_forum = chat.is_forum
+        
         # Получаем ID топика (правильный способ для форумов)
         topic_id = None
         
@@ -103,18 +110,11 @@ class RefillBot:
                 topic_id = event.message.reply_to.reply_to_top_id
             # Для обычных сообщений (не в топике)
             elif hasattr(event.message.reply_to, 'reply_to_msg_id'):
-                # Это может быть ответ на сообщение, но не в топике
-                # Проверяем, есть ли у чата форум
-                if chat.is_forum:
-                    # Если это форум, но reply_to_top_id нет,
-                    # значит сообщение в главном чате (не в топике)
-                    topic_id = None
-                else:
-                    topic_id = event.message.reply_to.reply_to_msg_id
+                topic_id = None
         
-        # Дополнительная проверка: если чат является форумом,
-        # но сообщение не в топике, topic_id будет None
-        if chat.is_forum and not topic_id:
+        # Если чат является форумом и topic_id не определен,
+        # значит сообщение в главном чате форума (не в топике)
+        if is_forum and not topic_id:
             # Сообщение в главном чате форума
             logger.debug(f"   Сообщение в главном чате форума {chat_title}")
         
@@ -125,7 +125,7 @@ class RefillBot:
         logger.info(f"   Chat ID: {chat_id}")
         logger.info(f"   Topic ID: {topic_id}")
         logger.info(f"   Текст: {event.message.text[:50]}...")
-        logger.info(f"   Форум: {chat.is_forum}")
+        logger.info(f"   Форум: {is_forum}")
         
         # Отвечаем
         try:
