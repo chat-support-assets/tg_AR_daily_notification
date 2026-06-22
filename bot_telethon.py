@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# bot_telethon.py - Боты на Telethon (только боты)
+
 import asyncio
 from typing import Optional
 from datetime import datetime
@@ -41,10 +44,11 @@ class RefillBot:
         """Инициализация бота"""
         try:
             # Создаем клиента Telethon для бота
+            # Для бота API ID и Hash не нужны, передаем 0 и пустую строку
             self.client = TelegramClient(
                 f'bot_{self.bot_type}',
-                api_id=0,  # Не используется для ботов
-                api_hash='',  # Не используется для ботов
+                api_id=1,  # Должно быть число, не 0
+                api_hash=''  # Пустая строка для ботов
             )
             
             # Авторизуемся как бот
@@ -94,12 +98,15 @@ class RefillBot:
         chat_title = chat.title
         
         # Получаем ID топика (если есть)
-        # В Telethon для ботов message_thread_id доступен через message.reply_to
+        # В Telethon для ботов ID топика хранится в reply_to.reply_to_top_id
         topic_id = None
         if event.message.reply_to:
-            # Если сообщение является ответом на сообщение в топике
-            # или находится в топике, reply_to содержит информацию
-            topic_id = event.message.reply_to.reply_to_msg_id
+            # Для сообщений в топиках (форумах)
+            if hasattr(event.message.reply_to, 'reply_to_top_id'):
+                topic_id = event.message.reply_to.reply_to_top_id
+            # Если это просто ответ на сообщение
+            elif hasattr(event.message.reply_to, 'reply_to_msg_id'):
+                topic_id = event.message.reply_to.reply_to_msg_id
         
         # Проверяем, есть ли у нас уже эта группа
         group_name = chat_title
