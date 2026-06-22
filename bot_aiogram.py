@@ -1,9 +1,12 @@
+#!/usr/bin/env python
+# bot_aiogram.py - Оптимизированные боты на aiogram
+
 import asyncio
 from datetime import datetime
 from typing import Optional
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import Message, ChatMemberUpdated, ChatPermissions
+from aiogram.types import Message
 from aiogram.exceptions import TelegramBadRequest
 
 from config import (
@@ -25,6 +28,7 @@ class RefillBot:
         self.bot: Optional[Bot] = None
         self.dp: Optional[Dispatcher] = None
         self.is_ready = False
+        self.running = True
         self.data_processor = DataProcessor()
         self.agent_manager = agent_manager
         
@@ -53,18 +57,14 @@ class RefillBot:
             async def handle_my_chat_member(update: types.ChatMemberUpdated):
                 await self._handle_my_chat_member(update)
             
-            # Запускаем бота
-            await self.dp.start_polling(self.bot)
-            
             self.is_ready = True
-            logger.info(f"✅ Бот {self.bot_type} инициализирован и запущен")
+            logger.info(f"✅ Бот {self.bot_type} инициализирован")
             
             # Получаем информацию о боте
             me = await self.bot.get_me()
-            logger.info(f"   Бот: @{me.username} (ID: {me.id}")
+            logger.info(f"   Бот: @{me.username} (ID: {me.id})")
             
-            # После запуска проверяем все группы
-            await self._scan_existing_groups()
+            return self.dp
             
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации бота {self.bot_type}: {e}")
@@ -91,23 +91,11 @@ class RefillBot:
         # Получаем ID топика
         topic_id = message.message_thread_id
         
-        # Если сообщение не в топике, проверяем, есть ли топик AR в этой группе
+        # Если сообщение не в топике, проверяем сохраненный topic_id
         if not topic_id:
-            # Проверяем, есть ли сохраненный topic_id для этой группы
             saved_topic_id = self.agent_manager.get_topic_id(chat_title)
             if saved_topic_id:
                 topic_id = saved_topic_id
-            else:
-                # Пытаемся найти топик AR
-                topic_id = await self._find_ar_topic(chat_id)
-                if topic_id:
-                    logger.info(f"🔍 Найден топик AR в группе {chat_title}: {topic_id}")
-                else:
-                    # Отправляем инструкцию
-                    await message.answer(
-                        f"📝 Создайте топик '{TOPIC_NAME}' и напишите в него сообщение,\n"
-                        f"чтобы бот определил ID топика для отправки отчетов."
-                    )
         
         # Сохраняем информацию
         self.agent_manager.update_agent(chat_title, chat_id, topic_id)
@@ -115,26 +103,17 @@ class RefillBot:
         logger.info(f"📩 [{self.bot_type}] Сообщение из группы {chat_title}")
         logger.info(f"   Chat ID: {chat_id}")
         logger.info(f"   Topic ID: {topic_id}")
-        logger.info(f"   Текст: {message.text[:50]}...")
         
-        # Отвечаем
-        try:
-            response = (
-                f"✅ Данные сохранены!\n\n"
-                f"📌 Группа: {chat_title}\n"
-                f"🆔 ID группы: {chat_id}\n"
-                f"🌍 Тип бота: {self.bot_type}\n"
-            )
-            
-            if topic_id:
-                response += f"📌 ID топика: {topic_id}\n✅ Топик сохранен!"
-            else:
-                response += f"\n📝 Создайте топик '{TOPIC_NAME}' и напишите в него,\nчтобы бот определил ID топика."
-            
-            await message.answer(response)
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки ответа: {e}")
+        # Отвечаем только если это команда или первое сообщение
+        if topic_id and not self.agent_manager.get_topic_id(chat_title):
+            try:
+                await message.answer(
+                    f"✅ Топик '{TOPIC_NAME}' найден!\n"
+                    f"📌 ID топика: {topic_id}\n"
+                    f"📊 Отчеты будут приходить сюда."
+                )
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки ответа: {e}")
     
     async def _handle_my_chat_member(self, update: types.ChatMemberUpdated):
         """Обработчик добавления бота в группу"""
@@ -151,101 +130,21 @@ class RefillBot:
             
             logger.info(f"➕ [{self.bot_type}] Бот добавлен в группу: {chat_title} (ID: {chat_id})")
             
-            # Пытаемся найти топик AR
-            topic_id = await self._find_ar_topic(chat_id)
-            if topic_id:
-                self.agent_manager.update_topic_id(chat_title, topic_id)
-                logger.info(f"✅ Найден топик AR в группе {chat_title}: {topic_id}")
-            else:
-                # Отправляем приветствие с инструкцией
-                try:
-                    await self.bot.send_message(
-                        chat_id,
-                        f"🤖 Привет! Я бот для отчетов по скорости рефилов!\n\n"
-                        f"📌 Группа: {chat_title}\n"
-                        f"🆔 ID группы: {chat_id}\n"
-                        f"🌍 Тип бота: {self.bot_type}\n\n"
-                        f"📝 Инструкция:\n"
-                        f"1. Создайте топик '{TOPIC_NAME}'\n"
-                        f"2. Напишите любое сообщение в этот топик\n"
-                        f"3. Бот автоматически определит топик"
-                    )
-                except Exception as e:
-                    logger.error(f"❌ Ошибка отправки приветствия: {e}")
-    
-    async def _find_ar_topic(self, chat_id: int) -> Optional[int]:
-        """Находит топик AR в группе"""
-        try:
-            # Пытаемся найти топик через отправку сообщения
-            # В aiogram нет прямого метода для получения списка топиков
-            # Поэтому используем обходной путь: проверяем через отправку
-            
-            # Пытаемся отправить сообщение в топик с ID 1 (если существует)
-            # Это не идеально, но работает для проверки
+            # Отправляем приветствие
             try:
-                # Пробуем отправить в топик с ID 1
                 await self.bot.send_message(
-                    chat_id=chat_id,
-                    text="🔍 Проверка топика...",
-                    message_thread_id=1
+                    chat_id,
+                    f"🤖 Привет! Я бот для отчетов по скорости рефилов!\n\n"
+                    f"📌 Группа: {chat_title}\n"
+                    f"🆔 ID группы: {chat_id}\n"
+                    f"🌍 Тип бота: {self.bot_type}\n\n"
+                    f"📝 Для настройки:\n"
+                    f"1. Создайте топик '{TOPIC_NAME}'\n"
+                    f"2. Напишите любое сообщение в этот топик\n"
+                    f"3. Бот автоматически определит топик для отчетов"
                 )
-                # Если успешно - значит топик с ID 1 существует
-                # Но нам нужен именно AR, поэтому проверяем дальше
-            except:
-                pass
-            
-            # В aiogram нет API для получения списка топиков
-            # Поэтому просим пользователя написать в топик
-            
-            # Отправляем сообщение с просьбой
-            await self.bot.send_message(
-                chat_id,
-                f"🔍 Для настройки топика '{TOPIC_NAME}':\n"
-                f"1. Создайте топик '{TOPIC_NAME}'\n"
-                f"2. Напишите любое сообщение в этот топик\n"
-                f"3. Бот автоматически определит ID топика"
-            )
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка поиска топика AR: {e}")
-            return None
-    
-    async def _scan_existing_groups(self):
-        """Сканирует существующие группы для поиска топиков AR"""
-        logger.info(f"🔍 Сканирование существующих групп для бота {self.bot_type}...")
-        
-        try:
-            agents = self.agent_manager.get_all_agents()
-            
-            if not agents:
-                logger.info("ℹ️ Нет сохраненных групп для сканирования")
-                return
-            
-            found = 0
-            for group_name, data in agents.items():
-                chat_id = data.get('chat_id')
-                if not chat_id:
-                    continue
-                
-                # Проверяем, есть ли уже topic_id
-                if data.get('topic_id'):
-                    logger.info(f"✅ Группа {group_name} уже имеет топик: {data['topic_id']}")
-                    found += 1
-                    continue
-                
-                # Пытаемся найти топик AR
-                topic_id = await self._find_ar_topic(chat_id)
-                if topic_id:
-                    self.agent_manager.update_topic_id(group_name, topic_id)
-                    logger.info(f"✅ Найден топик AR в группе {group_name}: {topic_id}")
-                    found += 1
-            
-            logger.info(f"✅ Сканирование завершено. Найдено топиков: {found}/{len(agents)}")
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка сканирования групп: {e}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка отправки приветствия: {e}")
     
     async def run_daily_report(self):
         """Отправка ежедневных отчетов"""
@@ -256,8 +155,10 @@ class RefillBot:
         logger.info(f"🚀 Запуск отчета для бота {self.bot_type}")
         
         try:
+            # Получаем данные из таблицы
             data = self.data_processor.process_all_data()
             
+            # Выбираем агентов для этого бота
             if self.bot_type == 'INR':
                 agents = data.inr_agents
             else:
@@ -271,8 +172,11 @@ class RefillBot:
             
             self._reset_stats()
             
+            # Отправляем отчеты каждому агенту
             for agent in agents:
                 await self._send_agent_report(agent, data)
+                # Небольшая задержка между отправками
+                await asyncio.sleep(1)
             
             self._log_stats(len(agents))
             
@@ -287,24 +191,26 @@ class RefillBot:
         topic_id = self.agent_manager.get_topic_id(group_name)
         
         if not chat_id:
-            logger.error(f"❌ Нет chat_id для группы {group_name}")
+            logger.warning(f"⚠️ Нет chat_id для группы {group_name}")
             self.stats['no_chat'] += 1
             return
         
+        if not topic_id:
+            logger.warning(f"⚠️ Нет topic_id для группы {group_name}")
+            self.stats['no_topic'] += 1
+            return
+        
+        # Строим сообщение
         message = self._build_message(agent, data)
         
         try:
-            if topic_id:
-                await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=message,
-                    message_thread_id=topic_id
-                )
-            else:
-                await self.bot.send_message(chat_id=chat_id, text=message)
-            
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                message_thread_id=topic_id
+            )
             self.stats['processed'] += 1
-            logger.info(f"✅ Отправлено агенту {agent.name} в группу {group_name}")
+            logger.info(f"✅ Отправлено агенту {agent.name} (ГЕО: {agent.geo})")
             
         except TelegramBadRequest as e:
             logger.error(f"❌ Ошибка отправки агенту {agent.name}: {e}")
@@ -347,20 +253,6 @@ class RefillBot:
                 "",
                 "━━━━━━━━━━━━━━━━━━━━━",
                 f"⏱️ Скорость после 120 минут: {share_120}%"
-            ])
-        elif share_120 is not None:
-            lines.extend([
-                "",
-                "━━━━━━━━━━━━━━━━━━━━━",
-                f"⏱️ Скорость после 120 минут: {share_120}%",
-                f"ℹ️ Показатель ниже порогового значения ({THRESHOLD_120_PLUS}%)"
-            ])
-        else:
-            lines.extend([
-                "",
-                "━━━━━━━━━━━━━━━━━━━━━",
-                f"⏱️ Скорость после 120 минут: Нет данных",
-                "ℹ️ У агента нет выплат, выполненных после 120 минут"
             ])
         
         lines.extend([
@@ -405,20 +297,35 @@ class RefillBot:
         """)
     
     async def run(self):
+        """Запуск бота (бесконечное прослушивание)"""
         await self.initialize()
-        logger.info(f"✅ Бот {self.bot_type} работает")
+        logger.info(f"✅ Бот {self.bot_type} запущен и слушает сообщения")
+        
+        # Запускаем polling
+        await self.dp.start_polling(self.bot)
     
     async def shutdown(self):
+        """Остановка бота"""
         if self.bot:
             await self.bot.session.close()
             logger.info(f"⏹️ Бот {self.bot_type} остановлен")
 
 
 async def run_inr_bot():
+    """Запуск INR бота с обработкой ошибок"""
     bot = RefillBot(BOT_INR_TOKEN, 'INR')
-    await bot.run()
+    try:
+        await bot.run()
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка INR бота: {e}")
+        await bot.shutdown()
 
 
 async def run_other_bot():
+    """Запуск OTHER бота с обработкой ошибок"""
     bot = RefillBot(BOT_OTHER_TOKEN, 'OTHER')
-    await bot.run()
+    try:
+        await bot.run()
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка OTHER бота: {e}")
+        await bot.shutdown()
