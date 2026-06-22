@@ -1,11 +1,7 @@
-#!/usr/bin/env python
-# bot_telethon.py - Боты на Telethon (только боты)
-
 import asyncio
 from typing import Optional
 from datetime import datetime
 from telethon import TelegramClient, events
-from telethon.tl.types import Message
 
 from config import (
     BOT_INR_TOKEN, BOT_OTHER_TOKEN,
@@ -43,12 +39,12 @@ class RefillBot:
     async def initialize(self):
         """Инициализация бота"""
         try:
-            # Создаем клиента Telethon для бота
-            # Для бота API ID и Hash не нужны, передаем 0 и пустую строку
+            # Фиктивные значения для API ID и Hash
+            # Для ботов они не используются, но Telethon требует их наличие
             self.client = TelegramClient(
                 f'bot_{self.bot_type}',
-                api_id=1,  # Должно быть число, не 0
-                api_hash=''  # Пустая строка для ботов
+                api_id=12345,  # Фиктивное значение
+                api_hash='0123456789abcdef0123456789abcdef'  # Фиктивное значение
             )
             
             # Авторизуемся как бот
@@ -77,9 +73,7 @@ class RefillBot:
             raise
     
     async def _handle_message(self, event):
-        """
-        Обработчик сообщений
-        """
+        """Обработчик сообщений"""
         # Проверяем, что это группа
         if not event.is_group:
             return
@@ -98,17 +92,13 @@ class RefillBot:
         chat_title = chat.title
         
         # Получаем ID топика (если есть)
-        # В Telethon для ботов ID топика хранится в reply_to.reply_to_top_id
         topic_id = None
         if event.message.reply_to:
-            # Для сообщений в топиках (форумах)
             if hasattr(event.message.reply_to, 'reply_to_top_id'):
                 topic_id = event.message.reply_to.reply_to_top_id
-            # Если это просто ответ на сообщение
             elif hasattr(event.message.reply_to, 'reply_to_msg_id'):
                 topic_id = event.message.reply_to.reply_to_msg_id
         
-        # Проверяем, есть ли у нас уже эта группа
         group_name = chat_title
         
         # Сохраняем информацию
@@ -144,18 +134,14 @@ class RefillBot:
             logger.error(f"❌ Ошибка отправки ответа: {e}")
     
     async def _handle_chat_action(self, event):
-        """
-        Обработчик добавления бота в группу
-        """
+        """Обработчик добавления бота в группу"""
         if event.user_added:
             for user in event.user_added:
                 if user.id == self.client.uid:
-                    # Бота добавили в группу
                     chat = await event.get_chat()
                     chat_id = chat.id
                     chat_title = chat.title
                     
-                    # Сохраняем группу
                     self.agent_manager.update_agent(chat_title, chat_id, None)
                     
                     logger.info(f"➕ [{self.bot_type}] Бот добавлен в группу: {chat_title} (ID: {chat_id})")
@@ -169,7 +155,7 @@ class RefillBot:
                             f"📝 Инструкция:\n"
                             f"1. Создайте топик '{TOPIC_NAME}'\n"
                             f"2. Напишите любое сообщение в этот топик\n"
-                            f"3. Бот автоматически определит топик и настроится"
+                            f"3. Бот автоматически определит топик"
                         )
                     except Exception as e:
                         logger.error(f"❌ Ошибка отправки приветствия: {e}")
@@ -177,9 +163,7 @@ class RefillBot:
                     break
     
     async def run_daily_report(self):
-        """
-        Отправка ежедневных отчетов
-        """
+        """Отправка ежедневных отчетов"""
         if not self.is_ready:
             logger.warning(f"⚠️ Бот {self.bot_type} не готов")
             return
@@ -187,10 +171,8 @@ class RefillBot:
         logger.info(f"🚀 Запуск отчета для бота {self.bot_type}")
         
         try:
-            # Получаем данные
             data = self.data_processor.process_all_data()
             
-            # Выбираем агентов для этого бота
             if self.bot_type == 'INR':
                 agents = data.inr_agents
             else:
@@ -202,26 +184,20 @@ class RefillBot:
             
             logger.info(f"📊 Найдено {len(agents)} агентов для {self.bot_type}")
             
-            # Сбрасываем статистику
             self._reset_stats()
             
-            # Обрабатываем каждого агента
             for agent in agents:
                 await self._send_agent_report(agent, data)
             
-            # Выводим статистику
             self._log_stats(len(agents))
             
         except Exception as e:
             logger.error(f"❌ Ошибка выполнения отчета: {e}")
     
     async def _send_agent_report(self, agent: AgentData, data: ProcessedData):
-        """
-        Отправляет отчет для одного агента
-        """
+        """Отправляет отчет для одного агента"""
         group_name = agent.group_name
         
-        # Получаем chat_id и topic_id из кэша
         chat_id = self.agent_manager.get_chat_id(group_name)
         topic_id = self.agent_manager.get_topic_id(group_name)
         
@@ -230,49 +206,34 @@ class RefillBot:
             self.stats['no_chat'] += 1
             return
         
-        # Строим сообщение
         message = self._build_message(agent, data)
         
         try:
-            # Отправляем сообщение
             if topic_id:
-                # Отправляем в топик
-                await self.client.send_message(
-                    chat_id,
-                    message,
-                    reply_to=topic_id  # Для отправки в топик
-                )
+                await self.client.send_message(chat_id, message, reply_to=topic_id)
             else:
-                # Отправляем в главный чат
                 await self.client.send_message(chat_id, message)
             
             self.stats['processed'] += 1
-            logger.info(f"✅ Отправлено сообщение агенту {agent.name} в группу {group_name}")
+            logger.info(f"✅ Отправлено агенту {agent.name} в группу {group_name}")
             
         except Exception as e:
             logger.error(f"❌ Ошибка отправки агенту {agent.name}: {e}")
             self.stats['errors'] += 1
     
     def _build_message(self, agent: AgentData, data: ProcessedData) -> str:
-        """
-        Строит сообщение для агента
-        """
+        """Строит сообщение для агента"""
         geo = agent.geo
         share_0_5 = agent.share_0_5 or 0
         share_120 = agent.share_120
         
-        # Получаем сообщения для этого ГЕО
         geo_msgs = data.geo_messages.get(geo)
-        
-        # Определяем диапазон скорости
         speed_range = self._get_speed_range(share_0_5)
         
-        # Получаем случайное сообщение
         speed_message = None
         if geo_msgs and speed_range in geo_msgs.messages:
             speed_message = geo_msgs.messages[speed_range].get_random_message()
         
-        # Строим сообщение
         lines = [
             f"📢 Ежедневный отчет по скорости рефилов",
             "",
@@ -289,27 +250,11 @@ class RefillBot:
         else:
             lines.append(f"Ваша скорость: {share_0_5}%")
         
-        # Добавляем информацию о 120+ если есть
         if share_120 is not None and share_120 >= 2.5:
             lines.extend([
                 "",
                 "━━━━━━━━━━━━━━━━━━━━━",
-                f"⏱️ Скорость после 120 минут: {share_120}%",
-                f"Ваша скорость после 120 минут: {share_120}%"
-            ])
-        elif share_120 is not None:
-            lines.extend([
-                "",
-                "━━━━━━━━━━━━━━━━━━━━━",
-                f"⏱️ Скорость после 120 минут: {share_120}%",
-                f"ℹ️ Показатель ниже порогового значения (2.5%)"
-            ])
-        else:
-            lines.extend([
-                "",
-                "━━━━━━━━━━━━━━━━━━━━━",
-                f"⏱️ Скорость после 120 минут: Нет данных",
-                "ℹ️ У агента нет выплат, выполненных после 120 минут"
+                f"⏱️ Скорость после 120 минут: {share_120}%"
             ])
         
         lines.extend([
@@ -321,7 +266,6 @@ class RefillBot:
         return "\n".join(lines)
     
     def _get_speed_range(self, percentage: float) -> str:
-        """Определяет диапазон скорости"""
         from config import SPEED_RANGES
         
         if percentage is None:
@@ -339,17 +283,14 @@ class RefillBot:
         return 'Ниже 80'
     
     def _reset_stats(self):
-        """Сбрасывает статистику"""
         for key in self.stats:
             self.stats[key] = 0
     
     def _log_stats(self, total_agents: int):
-        """Логирует статистику"""
         logger.info(f"""
         📊 Статистика отчета ({self.bot_type}):
         ─────────────────────────────
         ✅ Обработано:   {self.stats['processed']}
-        ⏭️ Пропущено:    {self.stats['skipped']}
         ❌ Ошибок:       {self.stats['errors']}
         📭 Нет чата:     {self.stats['no_chat']}
         ─────────────────────────────
@@ -357,13 +298,11 @@ class RefillBot:
         """)
     
     async def run(self):
-        """Запуск бота (бесконечное прослушивание)"""
         await self.initialize()
         logger.info(f"✅ Бот {self.bot_type} работает")
         await self.client.run_until_disconnected()
     
     async def shutdown(self):
-        """Остановка бота"""
         if self.client:
             await self.client.disconnect()
             logger.info(f"⏹️ Бот {self.bot_type} остановлен")
@@ -371,12 +310,10 @@ class RefillBot:
 
 # Функции для запуска
 async def run_inr_bot():
-    """Запуск INR бота"""
     bot = RefillBot(BOT_INR_TOKEN, 'INR')
     await bot.run()
 
 
 async def run_other_bot():
-    """Запуск OTHER бота"""
     bot = RefillBot(BOT_OTHER_TOKEN, 'OTHER')
     await bot.run()
