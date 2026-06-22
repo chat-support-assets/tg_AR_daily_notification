@@ -7,6 +7,10 @@ load_dotenv()
 BOT_INR_TOKEN = os.getenv('BOT_INR_TOKEN')
 BOT_OTHER_TOKEN = os.getenv('BOT_OTHER_TOKEN')
 
+# API ID и Hash
+API_ID = int(os.getenv('API_ID', 0))
+API_HASH = os.getenv('API_HASH')
+
 # Google Sheets
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 SERVICE_ACCOUNT_FILE = 'service_account.json'
