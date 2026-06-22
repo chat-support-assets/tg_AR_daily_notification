@@ -8,8 +8,6 @@ services:
     environment:
       - TZ=Europe/Moscow
       - PYTHONUNBUFFERED=1
-      - BOT_INR_TOKEN=${BOT_INR_TOKEN}
-      - BOT_OTHER_TOKEN=${BOT_OTHER_TOKEN}
     volumes:
       - ./logs:/app/logs
       - ./agents.json:/app/agents.json
@@ -17,8 +15,8 @@ services:
       - ./.env:/app/.env:ro
     networks:
       - refill-network
-    # Запускаем только ОДИН контейнер, который управляет обоими ботами
-    command: ["python", "test_bot.py"]
+    # Для обычного режима (прослушивание)
+    command: ["python", "main.py"]
 
 networks:
   refill-network:
