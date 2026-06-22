@@ -1,11 +1,16 @@
+#!/usr/bin/env python
+# bot_telethon.py - Боты на Telethon
+
 import asyncio
-from typing import Optional
 from datetime import datetime
+from typing import Optional
 from telethon import TelegramClient, events
+from telethon.errors import RPCError
 
 from config import (
     BOT_INR_TOKEN, BOT_OTHER_TOKEN,
-    TOPIC_NAME
+    API_ID, API_HASH,
+    TOPIC_NAME, THRESHOLD_120_PLUS
 )
 from agent_manager import agent_manager
 from data_processor import DataProcessor
@@ -24,10 +29,6 @@ class RefillBot:
         self.data_processor = DataProcessor()
         self.agent_manager = agent_manager
         
-        # Кэш для отслеживания обработанных групп
-        self.processed_groups = set()
-        
-        # Статистика
         self.stats = {
             'processed': 0,
             'skipped': 0,
@@ -39,21 +40,19 @@ class RefillBot:
     async def initialize(self):
         """Инициализация бота"""
         try:
-            # Фиктивные значения для API ID и Hash
-            # Для ботов они не используются, но Telethon требует их наличие
+            logger.info(f"🚀 Инициализация бота {self.bot_type}...")
+            
             self.client = TelegramClient(
                 f'bot_{self.bot_type}',
-                api_id=12345,  # Фиктивное значение
-                api_hash='0123456789abcdef0123456789abcdef'  # Фиктивное значение
+                API_ID,
+                API_HASH
             )
             
-            # Авторизуемся как бот
             await self.client.start(bot_token=self.token)
             
             self.is_ready = True
             logger.info(f"✅ Бот {self.bot_type} инициализирован")
             
-            # Получаем информацию о боте
             me = await self.client.get_me()
             logger.info(f"   Бот: @{me.username} (ID: {me.id})")
             
@@ -74,24 +73,19 @@ class RefillBot:
     
     async def _handle_message(self, event):
         """Обработчик сообщений"""
-        # Проверяем, что это группа
         if not event.is_group:
             return
         
-        # Проверяем, что сообщение от пользователя (не от бота)
         if event.message.sender_id == self.client.uid:
             return
         
-        # Проверяем, что сообщение текстовое
         if not event.message.text:
             return
         
-        # Получаем данные о чате
         chat = await event.get_chat()
         chat_id = chat.id
         chat_title = chat.title
         
-        # Получаем ID топика (если есть)
         topic_id = None
         if event.message.reply_to:
             if hasattr(event.message.reply_to, 'reply_to_top_id'):
@@ -99,34 +93,24 @@ class RefillBot:
             elif hasattr(event.message.reply_to, 'reply_to_msg_id'):
                 topic_id = event.message.reply_to.reply_to_msg_id
         
-        group_name = chat_title
+        self.agent_manager.update_agent(chat_title, chat_id, topic_id)
         
-        # Сохраняем информацию
-        self.agent_manager.update_agent(
-            group_name=group_name,
-            chat_id=chat_id,
-            topic_id=topic_id
-        )
-        
-        logger.info(f"📩 [{self.bot_type}] Сообщение из группы {group_name}")
+        logger.info(f"📩 [{self.bot_type}] Сообщение из группы {chat_title}")
         logger.info(f"   Chat ID: {chat_id}")
         logger.info(f"   Topic ID: {topic_id}")
         
-        # Отвечаем
         try:
             response = (
                 f"✅ Данные сохранены!\n\n"
-                f"📌 Группа: {group_name}\n"
+                f"📌 Группа: {chat_title}\n"
                 f"🆔 ID группы: {chat_id}\n"
                 f"🌍 Тип бота: {self.bot_type}\n"
             )
             
             if topic_id:
-                response += f"📌 ID топика: {topic_id}\n"
-                response += f"✅ Топик сохранен!"
+                response += f"📌 ID топика: {topic_id}\n✅ Топик сохранен!"
             else:
-                response += f"\n📝 Создайте топик '{TOPIC_NAME}' и напишите в него,\n"
-                response += f"чтобы бот определил ID топика."
+                response += f"\n📝 Создайте топик '{TOPIC_NAME}' и напишите в него,\nчтобы бот определил ID топика."
             
             await event.reply(response)
             
@@ -217,6 +201,9 @@ class RefillBot:
             self.stats['processed'] += 1
             logger.info(f"✅ Отправлено агенту {agent.name} в группу {group_name}")
             
+        except RPCError as e:
+            logger.error(f"❌ RPC ошибка агенту {agent.name}: {e}")
+            self.stats['errors'] += 1
         except Exception as e:
             logger.error(f"❌ Ошибка отправки агенту {agent.name}: {e}")
             self.stats['errors'] += 1
@@ -250,7 +237,7 @@ class RefillBot:
         else:
             lines.append(f"Ваша скорость: {share_0_5}%")
         
-        if share_120 is not None and share_120 >= 2.5:
+        if share_120 is not None and share_120 >= THRESHOLD_120_PLUS:
             lines.extend([
                 "",
                 "━━━━━━━━━━━━━━━━━━━━━",
@@ -308,7 +295,6 @@ class RefillBot:
             logger.info(f"⏹️ Бот {self.bot_type} остановлен")
 
 
-# Функции для запуска
 async def run_inr_bot():
     bot = RefillBot(BOT_INR_TOKEN, 'INR')
     await bot.run()

@@ -3,7 +3,6 @@ import os
 from typing import Dict, Optional
 from logger_setup import logger
 from config import AGENTS_CACHE_FILE
-from datetime import datetime
 
 
 class AgentManager:
@@ -32,12 +31,6 @@ class AgentManager:
                     
             except json.JSONDecodeError as e:
                 logger.error(f"❌ Ошибка парсинга JSON: {e}")
-                backup_file = f"{self.cache_file}.backup"
-                try:
-                    os.rename(self.cache_file, backup_file)
-                    logger.info(f"📦 Поврежденный файл переименован в {backup_file}")
-                except:
-                    pass
                 return {}
                 
             except Exception as e:
@@ -73,77 +66,32 @@ class AgentManager:
             logger.info(f"🔄 Обновлен агент: {group_name}")
         
         self.save_cache()
-        logger.info(f"   Chat ID: {chat_id}, Topic ID: {topic_id}")
-    
-    def update_topic_id(self, group_name: str, topic_id: Optional[int]):
-        """Обновляет только ID топика"""
-        if group_name in self.agents_data:
-            self.agents_data[group_name]['topic_id'] = topic_id
-            self.agents_data[group_name]['last_update'] = self._get_timestamp()
-            self.save_cache()
-            logger.info(f"✅ Обновлен ID топика для {group_name}: {topic_id}")
-        else:
-            logger.warning(f"⚠️ Агент {group_name} не найден в кэше")
-    
-    def get_agent(self, group_name: str) -> Optional[Dict]:
-        """Получает данные агента по имени группы"""
-        # Точное совпадение
-        if group_name in self.agents_data:
-            return self.agents_data[group_name]
-        
-        # Поиск без учета регистра
-        for name, data in self.agents_data.items():
-            if name.lower() == group_name.lower():
-                return data
-        
-        return None
     
     def get_chat_id(self, group_name: str) -> Optional[int]:
         """Получает ID чата по имени группы"""
-        agent = self.get_agent(group_name)
-        return agent.get('chat_id') if agent else None
+        if group_name in self.agents_data:
+            return self.agents_data[group_name].get('chat_id')
+        
+        for name, data in self.agents_data.items():
+            if name.lower() == group_name.lower():
+                return data.get('chat_id')
+        
+        return None
     
     def get_topic_id(self, group_name: str) -> Optional[int]:
         """Получает ID топика по имени группы"""
-        agent = self.get_agent(group_name)
-        return agent.get('topic_id') if agent else None
+        if group_name in self.agents_data:
+            return self.agents_data[group_name].get('topic_id')
+        
+        for name, data in self.agents_data.items():
+            if name.lower() == group_name.lower():
+                return data.get('topic_id')
+        
+        return None
     
     def get_all_agents(self):
         """Возвращает всех агентов"""
         return self.agents_data
-    
-    def remove_agent(self, group_name: str) -> bool:
-        """Удаляет агента из кэша"""
-        if group_name in self.agents_data:
-            del self.agents_data[group_name]
-            self.save_cache()
-            logger.info(f"🗑️ Агент {group_name} удален из кэша")
-            return True
-        
-        # Поиск без учета регистра
-        for name in list(self.agents_data.keys()):
-            if name.lower() == group_name.lower():
-                del self.agents_data[name]
-                self.save_cache()
-                logger.info(f"🗑️ Агент {name} удален из кэша")
-                return True
-        
-        return False
-    
-    def print_agents(self):
-        """Выводит всех агентов в читаемом виде"""
-        if not self.agents_data:
-            print("📭 Нет сохраненных агентов")
-            return
-        
-        print("\n📋 Сохраненные агенты:")
-        print("=" * 60)
-        for name, data in self.agents_data.items():
-            print(f"\n📌 {name}")
-            print(f"   Chat ID: {data['chat_id']}")
-            print(f"   Topic ID: {data.get('topic_id', 'Не задан')}")
-            print(f"   Обновлен: {data.get('last_update', 'Неизвестно')}")
-        print("=" * 60)
     
     @staticmethod
     def _get_timestamp():
@@ -151,5 +99,4 @@ class AgentManager:
         return datetime.now().isoformat()
 
 
-# Создаем глобальный менеджер агентов
 agent_manager = AgentManager()
