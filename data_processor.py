@@ -20,7 +20,6 @@ class DataProcessor:
         """
         Главный метод - читает и обрабатывает все данные
         """
-        logger.info("📊 Начинаем обработку данных...")
         
         # Читаем данные
         agents = self._read_total_score()
@@ -53,7 +52,6 @@ class DataProcessor:
         """
         Читает данные с листа Total score
         """
-        logger.info("📖 Чтение листа 'Total score'...")
         
         sheet = self.sheets.get_worksheet('Total score')
         records = sheet.get_all_values()
@@ -105,7 +103,6 @@ class DataProcessor:
             
             agents.append(agent)
         
-        logger.info(f"✅ Загружено {len(agents)} агентов")
         return agents
     
     def _read_ar_text(self) -> Dict[str, GeoMessages]:
@@ -113,7 +110,6 @@ class DataProcessor:
         Читает данные с листа AR_text
         Возвращает словарь {geo: GeoMessages}
         """
-        logger.info("📖 Чтение листа 'AR_text'...")
         
         sheet = self.sheets.get_worksheet('AR_text')
         records = sheet.get_all_values()
@@ -136,8 +132,6 @@ class DataProcessor:
                 geo = headers[col].strip().upper()
                 if geo and len(geo) == 3:  # Трехбуквенный код
                     geos.append(geo)
-        
-        logger.info(f"📍 Найдены ГЕО: {geos}")
         
         # Собираем сообщения для каждого ГЕО
         geo_messages = {}
@@ -182,11 +176,7 @@ class DataProcessor:
                 
                 geo_messages[geo].messages[speed_range] = speed_msg
         
-        logger.info(f"✅ Загружено сообщений для {len(geo_messages)} ГЕО")
-        
-        # Логируем пример
-        for geo, gm in geo_messages.items():
-            logger.info(f"  📌 {geo}: {len(gm.messages)} диапазонов")
+        logger.info(f"✅ Загружено {len(geo_messages)} ГЕО с сообщениями")
         
         return geo_messages
     
@@ -264,12 +254,6 @@ class DataProcessor:
         """
         Логирует статистику по обработанным данным
         """
-        logger.info("📊 Статистика обработки:")
-        logger.info(f"  Всего агентов: {len(data.inr_agents) + len(data.other_agents)}")
-        logger.info(f"  INR агентов: {len(data.inr_agents)}")
-        logger.info(f"  OTHER агентов: {len(data.other_agents)}")
-        
-        for geo, agents in data.agents_by_geo.items():
-            logger.info(f"  {geo}: {len(agents)} агентов")
-        
-        logger.info(f"  ГЕО с сообщениями: {len(data.geo_messages)}")
+        logger.info(
+            f"📊 Загружено: {len(data.inr_agents) + len(data.other_agents)} агентов, {len(data.geo_messages)} ГЕО, {len(data.inr_agents)} для INR"
+        )

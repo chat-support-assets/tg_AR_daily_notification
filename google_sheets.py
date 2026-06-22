@@ -36,10 +36,8 @@ class GoogleSheetsClient:
                 with open(SERVICE_ACCOUNT_FILE, 'r') as f:
                     data = json.load(f)
                     impersonate_email = data.get('client_email')
-                    logger.info(f"📧 Email из service_account.json: {impersonate_email}")
             else:
                 impersonate_email = IMPERSONATE_EMAIL
-                logger.info(f"📧 Email из .env: {impersonate_email}")
             
             # Создаем учетные данные
             scopes = ['https://www.googleapis.com/auth/spreadsheets']
@@ -51,7 +49,6 @@ class GoogleSheetsClient:
             # Добавляем impersonate
             if impersonate_email:
                 creds = creds.with_subject(impersonate_email)
-                logger.info(f"✅ Используем impersonate: {impersonate_email}")
             
             self.client = gspread.authorize(creds)
             self.spreadsheet = self.client.open_by_key(SPREADSHEET_ID)

@@ -21,7 +21,6 @@ async def run_report(bot_type: str = 'both'):
             await bot.initialize()
             await bot.run_daily_report()
             await bot.shutdown()
-            logger.info("✅ Отчет INR завершен")
             results.append(True)
         except Exception as e:
             logger.error(f"❌ Ошибка отчета INR: {e}")
@@ -33,7 +32,6 @@ async def run_report(bot_type: str = 'both'):
             await bot.initialize()
             await bot.run_daily_report()
             await bot.shutdown()
-            logger.info("✅ Отчет OTHER завершен")
             results.append(True)
         except Exception as e:
             logger.error(f"❌ Ошибка отчета OTHER: {e}")
@@ -61,11 +59,7 @@ async def main():
             await run_report(args.bot)
             return
         
-        logger.info("🚀 Запуск ботов...")
-        logger.info("   INR бот: обрабатывает агентов с ГЕО INR")
-        logger.info("   OTHER бот: обрабатывает всех остальных агентов")
-        logger.info("   Нажмите Ctrl+C для остановки")
-        logger.info("")
+        logger.info("🚀 Запуск ботов (нажмите Ctrl+C для остановки)")
         
         # Запускаем ботов
         if args.bot == 'inr':
@@ -91,9 +85,6 @@ async def main():
         logger.info("⏹️ Получен сигнал остановки")
     except Exception as e:
         logger.error(f"❌ Критическая ошибка: {e}")
-    finally:
-        # Закрываем все открытые сессии
-        logger.info("🔄 Завершение работы...")
 
 
 if __name__ == '__main__':

@@ -97,10 +97,6 @@ class RefillBot:
         # Сохраняем информацию (используем полное название группы)
         self.agent_manager.update_agent(chat_title, chat_id, topic_id)
         
-        logger.info(f"📩 [{self.bot_type}] Сообщение из группы {chat_title}")
-        logger.info(f"   Chat ID: {chat_id}")
-        logger.info(f"   Topic ID: {topic_id}")
-        
         # Отвечаем только если это первое сообщение в топике
         if topic_id and not self.agent_manager.get_topic_id(chat_title):
             try:
@@ -148,8 +144,6 @@ class RefillBot:
         if not self.is_ready:
             logger.warning(f"⚠️ Бот {self.bot_type} не готов")
             return
-        
-        logger.info(f"🚀 Запуск отчета для бота {self.bot_type}")
         
         try:
             # Получаем данные из таблицы
@@ -220,7 +214,7 @@ class RefillBot:
                 message_thread_id=topic_id
             )
             self.stats['processed'] += 1
-            logger.info(f"✅ Отправлено агенту {agent.name} (ГЕО: {agent.geo})")
+            logger.info(f"📤 {self.bot_type}: {agent.name} ✓")
             
         except TelegramBadRequest as e:
             logger.error(f"❌ Ошибка отправки агенту {agent.name}: {e}")
@@ -319,7 +313,6 @@ class RefillBot:
         """Остановка бота"""
         if self.bot:
             await self.bot.session.close()
-            logger.info(f"⏹️ Бот {self.bot_type} остановлен")
 
 
 async def run_inr_bot():
