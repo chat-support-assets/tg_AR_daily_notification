@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# bot_aiogram.py - Оптимизированные боты на aiogram
+# bot_aiogram.py - Исправленная версия с правильным сохранением имен
 
 import asyncio
 from datetime import datetime
@@ -97,14 +97,14 @@ class RefillBot:
             if saved_topic_id:
                 topic_id = saved_topic_id
         
-        # Сохраняем информацию
+        # Сохраняем информацию (используем полное название группы)
         self.agent_manager.update_agent(chat_title, chat_id, topic_id)
         
         logger.info(f"📩 [{self.bot_type}] Сообщение из группы {chat_title}")
         logger.info(f"   Chat ID: {chat_id}")
         logger.info(f"   Topic ID: {topic_id}")
         
-        # Отвечаем только если это команда или первое сообщение
+        # Отвечаем только если это первое сообщение в топике
         if topic_id and not self.agent_manager.get_topic_id(chat_title):
             try:
                 await message.answer(
@@ -185,18 +185,31 @@ class RefillBot:
     
     async def _send_agent_report(self, agent: AgentData, data: ProcessedData):
         """Отправляет отчет для одного агента"""
-        group_name = agent.group_name
+        # Используем ПОЛНОЕ имя агента как ключ для поиска в кэше
+        agent_full_name = agent.name
         
-        chat_id = self.agent_manager.get_chat_id(group_name)
-        topic_id = self.agent_manager.get_topic_id(group_name)
+        # Пробуем найти по полному имени
+        chat_id = self.agent_manager.get_chat_id(agent_full_name)
+        topic_id = self.agent_manager.get_topic_id(agent_full_name)
+        
+        # Если не нашли по полному имени, пробуем по group_name
+        if not chat_id:
+            group_name = agent.group_name
+            chat_id = self.agent_manager.get_chat_id(group_name)
+            topic_id = self.agent_manager.get_topic_id(group_name)
+            
+            if chat_id:
+                logger.info(f"🔍 Найден chat_id для {agent_full_name} по group_name: {group_name}")
+                # Обновляем кэш, используя полное имя
+                self.agent_manager.update_agent(agent_full_name, chat_id, topic_id)
         
         if not chat_id:
-            logger.warning(f"⚠️ Нет chat_id для группы {group_name}")
+            logger.warning(f"⚠️ Нет chat_id для агента {agent_full_name}")
             self.stats['no_chat'] += 1
             return
         
         if not topic_id:
-            logger.warning(f"⚠️ Нет topic_id для группы {group_name}")
+            logger.warning(f"⚠️ Нет topic_id для агента {agent_full_name}")
             self.stats['no_topic'] += 1
             return
         

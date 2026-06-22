@@ -68,12 +68,20 @@ class AgentManager:
         self.save_cache()
     
     def get_chat_id(self, group_name: str) -> Optional[int]:
-        """Получает ID чата по имени группы"""
+        """Получает ID чата по имени группы с поиском по частичному совпадению"""
+        # Точное совпадение
         if group_name in self.agents_data:
             return self.agents_data[group_name].get('chat_id')
         
+        # Поиск без учета регистра
         for name, data in self.agents_data.items():
             if name.lower() == group_name.lower():
+                return data.get('chat_id')
+        
+        # Поиск по частичному совпадению (если group_name входит в название)
+        for name, data in self.agents_data.items():
+            if group_name.lower() in name.lower():
+                logger.info(f"🔍 Найдено частичное совпадение: {group_name} -> {name}")
                 return data.get('chat_id')
         
         return None
