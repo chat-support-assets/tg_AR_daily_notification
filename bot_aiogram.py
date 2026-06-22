@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# bot_aiogram.py - Исправленная версия с правильным сохранением имен
-
 import asyncio
 from datetime import datetime
 from typing import Optional
@@ -246,32 +243,33 @@ class RefillBot:
             speed_message = geo_msgs.messages[speed_range].get_random_message()
         
         lines = [
-            f"📢 Ежедневный отчет по скорости рефилов",
+            f"📢 Daily Refill Speed ​​Report",
             "",
-            f"🤖 Агент: {agent.name}",
-            f"🌍 ГЕО: {geo}",
-            f"📊 Количество рефилов: {agent.refill_count}",
+            f"🤖 Agent: {agent.name}",
+            f"🌍 GEO: {geo}",
+            f"📊 Refill amount: {agent.refill_count}",
             "",
             "━━━━━━━━━━━━━━━━━━━━━",
-            f"⏱️ Скорость до 5 минут: {share_0_5}%",
+            f"⏱️ Speed ​​up to 5 minutes: {share_0_5}%",
         ]
         
         if speed_message:
             lines.append(speed_message)
         else:
-            lines.append(f"Ваша скорость: {share_0_5}%")
+            lines.append(f"Your speed: {share_0_5}%")
         
         if share_120 is not None and share_120 >= THRESHOLD_120_PLUS:
             lines.extend([
                 "",
                 "━━━━━━━━━━━━━━━━━━━━━",
-                f"⏱️ Скорость после 120 минут: {share_120}%"
+                f"⏱️ Speed ​​120-min+: {share_120}%",
+                "Currently within limit. Always keep it below 2.5%."
             ])
         
         lines.extend([
             "",
             "━━━━━━━━━━━━━━━━━━━━━",
-            f"📅 Отчет за {datetime.now().strftime('%d.%m.%Y')}"
+            f"📅 Report for {datetime.now().strftime('%d.%m.%Y')}"
         ])
         
         return "\n".join(lines)

@@ -79,10 +79,10 @@ class AgentManager:
                 return data.get('chat_id')
         
         # Поиск по частичному совпадению (если group_name входит в название)
-        for name, data in self.agents_data.items():
-            if group_name.lower() in name.lower():
-                logger.info(f"🔍 Найдено частичное совпадение: {group_name} -> {name}")
-                return data.get('chat_id')
+        # for name, data in self.agents_data.items():
+        #     if group_name.lower() in name.lower():
+        #         logger.info(f"🔍 Найдено частичное совпадение: {group_name} -> {name}")
+        #         return data.get('chat_id')
         
         return None
     

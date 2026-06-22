@@ -131,7 +131,7 @@ class DataProcessor:
         
         # Получаем список ГЕО из заголовков (колонки A-G)
         geos = []
-        for col in range(7):  # A-G
+        for col in range(8):  # A-H
             if col < len(headers) and headers[col]:
                 geo = headers[col].strip().upper()
                 if geo and len(geo) == 3:  # Трехбуквенный код
@@ -158,13 +158,13 @@ class DataProcessor:
                 if idx >= len(row):
                     continue
                 
-                # Сообщения находятся в колонках H-L (индексы 7-11)
+                # Сообщения находятся в колонках I-M (индексы 8-12)
                 messages = {
-                    'first': row[7].strip() if len(row) > 7 else '',
-                    'second': row[8].strip() if len(row) > 8 else '',
-                    'third': row[9].strip() if len(row) > 9 else '',
-                    'fourth': row[10].strip() if len(row) > 10 else '',
-                    'fifth': row[11].strip() if len(row) > 11 else ''
+                    'first': row[8].strip() if len(row) > 8 else '',
+                    'second': row[9].strip() if len(row) > 9 else '',
+                    'third': row[10].strip() if len(row) > 10 else '',
+                    'fourth': row[11].strip() if len(row) > 11 else '',
+                    'fifth': row[12].strip() if len(row) > 12 else ''
                 }
                 
                 # Создаем SpeedMessage
