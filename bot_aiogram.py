@@ -123,14 +123,7 @@ class RefillBot:
             try:
                 await self.bot.send_message(
                     chat_id,
-                    f"🤖 Hi! I'm a refill speed reporting bot!\n\n"
-                    f"📌 Group: {chat_title}\n"
-                    f"🆔 Group ID: {chat_id}\n"
-                    f"🌍 Bot type: {self.bot_type}\n\n"
-                    f"📝 For config:\n"
-                    f"1. Create topic '{TOPIC_NAME}'\n"
-                    f"2. Write any message in this topic\n"
-                    f"3. The bot will automatically determine the topic for reports"
+                    f"🤖 Success!"
                 )
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки приветствия: {e}")
