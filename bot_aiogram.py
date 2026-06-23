@@ -100,11 +100,7 @@ class RefillBot:
         # Отвечаем только если это первое сообщение в топике
         if topic_id and not self.agent_manager.get_topic_id(chat_title):
             try:
-                await message.answer(
-                    f"✅ Топик '{TOPIC_NAME}' найден!\n"
-                    f"📌 ID топика: {topic_id}\n"
-                    f"📊 Отчеты будут приходить сюда."
-                )
+                await message.answer("Success ✅")
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки ответа: {e}")
     
@@ -127,14 +123,14 @@ class RefillBot:
             try:
                 await self.bot.send_message(
                     chat_id,
-                    f"🤖 Привет! Я бот для отчетов по скорости рефилов!\n\n"
-                    f"📌 Группа: {chat_title}\n"
-                    f"🆔 ID группы: {chat_id}\n"
-                    f"🌍 Тип бота: {self.bot_type}\n\n"
-                    f"📝 Для настройки:\n"
-                    f"1. Создайте топик '{TOPIC_NAME}'\n"
-                    f"2. Напишите любое сообщение в этот топик\n"
-                    f"3. Бот автоматически определит топик для отчетов"
+                    f"🤖 Hi! I'm a refill speed reporting bot!\n\n"
+                    f"📌 Group: {chat_title}\n"
+                    f"🆔 Group ID: {chat_id}\n"
+                    f"🌍 Bot type: {self.bot_type}\n\n"
+                    f"📝 For config:\n"
+                    f"1. Create topic '{TOPIC_NAME}'\n"
+                    f"2. Write any message in this topic\n"
+                    f"3. The bot will automatically determine the topic for reports"
                 )
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки приветствия: {e}")
