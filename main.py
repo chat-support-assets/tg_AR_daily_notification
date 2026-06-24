@@ -1,12 +1,9 @@
-#!/usr/bin/env python
-# main.py - Точка входа с планировщиком (автоматический режим)
-
 import asyncio
 import signal
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from bot_aiogram import RefillBot, run_inr_bot, run_other_bot
+from bot_aiogram import RefillBot
 from config import BOT_INR_TOKEN, BOT_OTHER_TOKEN
 from logger_setup import logger
 
@@ -15,6 +12,13 @@ from logger_setup import logger
 bot_inr_instance = None
 bot_other_instance = None
 scheduler = None
+
+
+async def run_bot(bot_instance, bot_type):
+    """Запуск бота (обертка, если метода run нет)"""
+    await bot_instance.initialize()
+    logger.info(f"✅ Бот {bot_type} запущен и слушает сообщения")
+    await bot_instance.dp.start_polling(bot_instance.bot)
 
 
 async def run_report(bot_type: str = 'both'):
@@ -67,12 +71,10 @@ async def shutdown(signum=None, frame=None):
     """Graceful shutdown"""
     logger.info("⏹️ Получен сигнал остановки. Завершаем работу...")
     
-    # Останавливаем планировщик
     if scheduler:
         scheduler.shutdown()
         logger.info("✅ Планировщик остановлен")
     
-    # Останавливаем ботов
     if bot_inr_instance:
         await bot_inr_instance.shutdown()
     if bot_other_instance:
@@ -92,7 +94,6 @@ async def main():
     # Создаем планировщик
     scheduler = AsyncIOScheduler()
     
-    # Добавляем задание на каждый день в 12:00
     scheduler.add_job(
         scheduled_report,
         CronTrigger(hour=12, minute=0),
@@ -100,18 +101,17 @@ async def main():
         replace_existing=True
     )
     
-    # Запускаем планировщик
     scheduler.start()
     logger.info("✅ Планировщик запущен")
     
-    # Инициализируем и запускаем ботов
+    # Инициализируем ботов
     bot_inr_instance = RefillBot(BOT_INR_TOKEN, 'INR')
     bot_other_instance = RefillBot(BOT_OTHER_TOKEN, 'OTHER')
     
-    # Запускаем ботов параллельно
+    # Запускаем ботов (используем обертку run_bot)
     tasks = [
-        asyncio.create_task(bot_inr_instance.run()),
-        asyncio.create_task(bot_other_instance.run())
+        asyncio.create_task(run_bot(bot_inr_instance, 'INR')),
+        asyncio.create_task(run_bot(bot_other_instance, 'OTHER'))
     ]
     
     # Настройка обработки сигналов
@@ -119,7 +119,6 @@ async def main():
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown()))
     
-    # Ждем завершения
     try:
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:
