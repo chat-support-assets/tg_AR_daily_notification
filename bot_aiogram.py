@@ -68,7 +68,7 @@ class RefillBot:
             raise
     
     async def _handle_message(self, message: Message):
-        """Обработчик сообщений"""
+        """Обработчик сообщений - сохраняет ПЕРВЫЙ топик (не перезаписывает)"""
         # Проверяем, что это группа
         if not message.chat or message.chat.type not in ['group', 'supergroup']:
             return
@@ -85,24 +85,31 @@ class RefillBot:
         chat_id = chat.id
         chat_title = chat.title or f"Группа {chat_id}"
         
-        # Получаем ID топика
+        # Получаем ID топика из сообщения
         topic_id = message.message_thread_id
         
-        # Если сообщение не в топике, проверяем сохраненный topic_id
+        # Проверяем, есть ли уже сохраненный topic_id для этой группы
+        existing_topic_id = self.agent_manager.get_topic_id(chat_title)
+        
+        # Если topic_id уже сохранен - НЕ ПЕРЕЗАПИСЫВАЕМ
+        if existing_topic_id:
+            logger.info(f"📩 [{self.bot_type}] Топик уже сохранен для {chat_title} (ID: {existing_topic_id})")
+            return
+        
+        # Если сообщение НЕ в топике - сохраняем только chat_id
         if not topic_id:
-            saved_topic_id = self.agent_manager.get_topic_id(chat_title)
-            if saved_topic_id:
-                topic_id = saved_topic_id
+            self.agent_manager.update_agent(chat_title, chat_id, None)
+            logger.info(f"📩 [{self.bot_type}] Сообщение из {chat_title} (не в топике)")
+            return
         
-        # Сохраняем информацию (используем полное название группы)
+        # Сообщение в топике - сохраняем ПЕРВЫЙ topic_id
         self.agent_manager.update_agent(chat_title, chat_id, topic_id)
+        logger.info(f"✅ [{self.bot_type}] Сохранен топик для {chat_title} (ID: {topic_id})")
         
-        # Отвечаем только если это первое сообщение в топике
-        if topic_id and not self.agent_manager.get_topic_id(chat_title):
-            try:
-                await message.answer("Success ✅")
-            except Exception as e:
-                logger.error(f"❌ Ошибка отправки ответа: {e}")
+        try:
+            await message.answer("Success ✅")
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки ответа: {e}")
     
     async def _handle_my_chat_member(self, update: types.ChatMemberUpdated):
         """Обработчик добавления бота в группу"""
